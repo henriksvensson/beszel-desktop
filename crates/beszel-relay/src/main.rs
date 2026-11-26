@@ -51,7 +51,7 @@ async fn main() -> Result<()> {
 
     info!(?config, "Starting beszel-relay");
 
-    let state = RelayState::new(config.history_capacity);
+    let state = RelayState::new(config.history_capacity).with_hub_url(config.hub_url.clone());
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let wake_rx = sleep::spawn_wake_detector(shutdown_rx.clone());
 

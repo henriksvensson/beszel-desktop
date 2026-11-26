@@ -128,6 +128,26 @@ local function buildTooltip(sys, latest, state, filter)
         value = fmt.formatUptime(latest.uptime_secs),
       })
     end
+
+    local failedServices = tonumber(latest.failed_services) or 0
+    if failedServices > 0 then
+      table.insert(rows, {
+        key = noctalia.tr("tooltip.services"),
+        value = noctalia.tr("panel.failed_services", { count = tostring(failedServices) }),
+      })
+    end
+
+    local updatesTotal = tonumber(latest.updates_total) or 0
+    if updatesTotal > 0 then
+      local updatesSec = tonumber(latest.updates_security) or 0
+      local updText = updatesSec > 0
+        and noctalia.tr("panel.updates_security_short", {
+          total = tostring(updatesTotal),
+          security = tostring(updatesSec),
+        })
+        or noctalia.tr("panel.updates_short", { total = tostring(updatesTotal) })
+      table.insert(rows, { key = noctalia.tr("tooltip.updates"), value = updText })
+    end
   end
   table.insert(rows, { key = noctalia.tr("tooltip.status"), value = fmt.stateLabel(state, filter) })
   return rows

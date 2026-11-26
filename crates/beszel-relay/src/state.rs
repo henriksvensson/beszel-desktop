@@ -20,6 +20,7 @@ pub struct RelayState {
 
 struct InnerState {
     history_capacity: usize,
+    hub_url: Option<String>,
     connection: ConnectionStatus,
     system_order: Vec<String>,
     systems: HashMap<String, SystemEntry>,
@@ -50,6 +51,7 @@ impl RelayState {
         let now = now_ms();
         let inner = InnerState {
             history_capacity: history_capacity.max(1),
+            hub_url: None,
             connection: ConnectionStatus {
                 state: ConnectionState::Connecting,
                 since_ms: now,
@@ -65,6 +67,17 @@ impl RelayState {
             tx,
             clients_tx: Arc::new(clients_tx),
         }
+    }
+
+    /// Attach the configured Beszel hub URL so snapshots can link to host pages.
+    pub fn with_hub_url(self, hub_url: String) -> Self {
+        let mut guard = self.inner.lock().expect("relay state lock poisoned");
+        let trimmed = hub_url.trim_end_matches('/').to_string();
+        if !trimmed.is_empty() {
+            guard.hub_url = Some(trimmed);
+        }
+        drop(guard);
+        self
     }
 
     /// Increment active local client count until the returned guard is dropped.
@@ -181,6 +194,7 @@ fn compact_historical_sample(sample: &mut LiveSample) {
     sample.cpu_cores = None;
     sample.containers = None;
     sample.unhealthy_pools = None;
+    sample.extra_disks = None;
 }
 
 fn build_snapshot(inner: &InnerState, generated_at_ms: i64) -> RelayEvent {
@@ -198,6 +212,7 @@ fn build_snapshot(inner: &InnerState, generated_at_ms: i64) -> RelayEvent {
     RelayEvent::Snapshot {
         protocol_version: LOCAL_PROTOCOL_VERSION,
         generated_at_ms,
+        hub_url: inner.hub_url.clone(),
         connection: inner.connection.clone(),
         systems,
     }

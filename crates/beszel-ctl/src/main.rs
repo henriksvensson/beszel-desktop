@@ -172,6 +172,13 @@ async fn watch_single_connection(socket_path: &Path, raw: bool) -> Result<()> {
     Ok(())
 }
 
+struct SnapshotMeta {
+    protocol_version: u32,
+    generated_at_ms: i64,
+    hub_url: Option<String>,
+    connection: ConnectionStatus,
+}
+
 fn emit_raw_line(line: &str) -> Result<bool> {
     if line.len() <= MAX_RAW_LINE_BYTES {
         return write_stdout_line(line);
@@ -179,6 +186,7 @@ fn emit_raw_line(line: &str) -> Result<bool> {
     let Ok(RelayEvent::Snapshot {
         protocol_version,
         generated_at_ms,
+        hub_url,
         connection,
         systems,
     }) = decode_ndjson(line)
@@ -186,15 +194,16 @@ fn emit_raw_line(line: &str) -> Result<bool> {
         return write_stdout_line(line);
     };
 
-    emit_split_snapshot(protocol_version, generated_at_ms, connection, systems)
+    let meta = SnapshotMeta {
+        protocol_version,
+        generated_at_ms,
+        hub_url,
+        connection,
+    };
+    emit_split_snapshot(meta, systems)
 }
 
-fn emit_split_snapshot(
-    protocol_version: u32,
-    generated_at_ms: i64,
-    connection: ConnectionStatus,
-    systems: Vec<SystemLiveState>,
-) -> Result<bool> {
+fn emit_split_snapshot(meta: SnapshotMeta, systems: Vec<SystemLiveState>) -> Result<bool> {
     let mut deferred = Vec::new();
     let header_systems = systems
         .into_iter()
@@ -206,9 +215,10 @@ fn emit_split_snapshot(
         .collect();
 
     let header = RelayEvent::Snapshot {
-        protocol_version,
-        generated_at_ms,
-        connection,
+        protocol_version: meta.protocol_version,
+        generated_at_ms: meta.generated_at_ms,
+        hub_url: meta.hub_url,
+        connection: meta.connection,
         systems: header_systems,
     };
     if !write_stdout_raw(&encode_ndjson(&header)?)? {

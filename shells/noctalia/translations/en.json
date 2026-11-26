@@ -1,5 +1,9 @@
 {
   "panel": {
+    "battery_charging": "Battery charging",
+    "battery_discharging": "On battery",
+    "battery_full": "Battery full",
+    "battery_idle": "Plugged in (holding charge)",
     "containers": "Containers",
     "containers_count": "{count} active",
     "cores": "Cores",
@@ -10,12 +14,15 @@
     "disk_io": "Disk I/O",
     "disk_io_values": "R {read}  W {write}",
     "empty": "Waiting for live metrics from beszel-relay.",
+    "failed_services": "{count} failed",
+    "failed_services_tooltip": "{count} failed systemd services",
     "gpu": "GPU",
     "memory": "Memory",
     "network": "Network",
     "network_download": "Download",
     "network_peak": "Peak {rate}",
     "network_upload": "Upload",
+    "open_in_beszel": "Open {host} in Beszel",
     "open_settings": "Plugin settings",
     "pool_degraded": "Degraded storage pool: {pools}",
     "setup_alt": "Or install via Nix, Cargo, or GitHub Releases, then run `beszel-ctl init`.",
@@ -30,6 +37,10 @@
     "setup_install_title": "Install beszel-relay",
     "swap": "Swap",
     "title": "Beszel Desktop",
+    "updates_security_short": "{total} upd ({security} sec)",
+    "updates_security_tooltip": "{total} pending package updates ({security} security)",
+    "updates_short": "{total} upd",
+    "updates_tooltip": "{total} pending package updates",
     "vitals_load": "Load {l1} {l5} {l15}",
     "vitals_load_cores": "Load {l1} {l5} {l15} ({cores}c)",
     "vitals_uptime": "Up {uptime}"
@@ -147,9 +158,11 @@
     "memory": "Memory",
     "network": "Network",
     "os": "OS",
+    "services": "Services",
     "status": "Status",
     "swap": "Swap",
     "temp": "Temperature",
+    "updates": "Updates",
     "uptime": "Uptime"
   }
 }

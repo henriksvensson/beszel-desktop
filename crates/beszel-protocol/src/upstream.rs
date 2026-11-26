@@ -4,11 +4,12 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::local::{ContainerSample, GpuSample, LiveSample};
+use crate::local::{ContainerSample, DiskSample, GpuSample, LiveSample};
 
 const GIB_BYTES: f64 = 1024.0 * 1024.0 * 1024.0;
 const MIB_BYTES: f64 = 1024.0 * 1024.0;
 const MAX_CONTAINERS: usize = 8;
+const MAX_EXTRA_DISKS: usize = 6;
 
 /// PocketBase realtime topic for watching changes to the `systems` collection.
 pub const SYSTEMS_COLLECTION_TOPIC: &str = "systems/*";
@@ -145,6 +146,12 @@ pub struct UpstreamSystemInfo {
     /// Battery `[percent, state]`.
     #[serde(default)]
     pub bat: Option<[u8; 2]>,
+    /// Systemd service summary `[total_services, failed_services]`.
+    #[serde(default)]
+    pub sv: Option<Vec<u16>>,
+    /// Package update summary `[total_updates, security_updates]`.
+    #[serde(default)]
+    pub pu: Option<Vec<u16>>,
     /// Legacy OS enum (`0=Linux, 1=Darwin, 2=Windows, 3=FreeBSD`) for hubs without `system_details`.
     #[serde(default)]
     pub os: Option<u8>,
@@ -178,6 +185,15 @@ pub struct UpstreamPoolStats {
     pub n: Option<String>,
     #[serde(default)]
     pub h: Option<String>,
+}
+
+/// Upstream extra filesystem entry (`stats.efs`).
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct UpstreamFsStats {
+    #[serde(default)]
+    pub d: f64,
+    #[serde(default)]
+    pub du: f64,
 }
 
 /// Upstream container metrics entry (`rt_metrics.container[]`).
@@ -257,6 +273,9 @@ pub struct UpstreamStats {
     /// Storage pools map (`id -> pool stats`).
     #[serde(default)]
     pub z: Option<BTreeMap<String, UpstreamPoolStats>>,
+    /// Extra mounted filesystems map (`name -> fs stats`).
+    #[serde(default)]
+    pub efs: Option<BTreeMap<String, UpstreamFsStats>>,
 }
 
 impl RtMetricsPayload {
@@ -271,6 +290,8 @@ impl RtMetricsPayload {
         let (swap_total_bytes, swap_used_bytes) = stats.swap_bytes();
         let (net_sent_bps, net_recv_bps) = stats.network_bps();
         let (disk_read_bps, disk_write_bps) = stats.disk_io_bps();
+        let (battery_pct, battery_state) = stats.battery_info(info);
+        let (updates_total, updates_security) = extract_updates(info);
 
         Some(LiveSample {
             timestamp_ms,
@@ -285,7 +306,11 @@ impl RtMetricsPayload {
             uptime_secs: info.and_then(|i| i.u),
             load_avg: stats.la.or_else(|| info.and_then(|i| i.la)),
             temp_max_c: stats.peak_temp_c(info),
-            battery_pct: stats.battery_pct(info),
+            battery_pct,
+            battery_state,
+            failed_services: extract_failed_services(info),
+            updates_total,
+            updates_security,
             net_sent_bps,
             net_recv_bps,
             disk_pct: stats.dp.or_else(|| info.and_then(|i| i.dp)),
@@ -293,6 +318,7 @@ impl RtMetricsPayload {
             disk_total_gb: stats.d,
             disk_read_bps,
             disk_write_bps,
+            extra_disks: stats.extra_disks(),
             unhealthy_pools: stats.unhealthy_pools(),
             gpus: stats.gpu_samples(),
             containers: extract_top_containers(&self.container),
@@ -352,9 +378,32 @@ impl UpstreamStats {
             .reduce(f64::max)
     }
 
-    fn battery_pct(&self, info: Option<&UpstreamSystemInfo>) -> Option<u8> {
-        let bat = self.bat.or_else(|| info.and_then(|i| i.bat))?;
-        Some(bat[0].min(100))
+    fn battery_info(&self, info: Option<&UpstreamSystemInfo>) -> (Option<u8>, Option<String>) {
+        let Some(bat) = self.bat.or_else(|| info.and_then(|i| i.bat)) else {
+            return (None, None);
+        };
+        let state = match bat[1] {
+            1 => Some("empty"),
+            2 => Some("full"),
+            3 => Some("charging"),
+            4 => Some("discharging"),
+            5 => Some("idle"),
+            _ => None,
+        };
+        (Some(bat[0].min(100)), state.map(str::to_string))
+    }
+
+    fn extra_disks(&self) -> Option<Vec<DiskSample>> {
+        let map = self.efs.as_ref()?;
+        let mut disks: Vec<DiskSample> = map
+            .iter()
+            .filter_map(|(name, fs)| build_disk_sample(name, fs))
+            .collect();
+        if disks.is_empty() {
+            return None;
+        }
+        disks.truncate(MAX_EXTRA_DISKS);
+        Some(disks)
     }
 
     fn unhealthy_pools(&self) -> Option<Vec<String>> {
@@ -394,6 +443,41 @@ impl UpstreamStats {
             .collect();
         Some(samples)
     }
+}
+
+fn build_disk_sample(name: &str, fs: &UpstreamFsStats) -> Option<DiskSample> {
+    if name.is_empty() {
+        return None;
+    }
+    if !fs.d.is_finite() || fs.d <= 0.0 {
+        return None;
+    }
+    let used = fs.du.max(0.0);
+    let pct = ((used / fs.d) * 100.0).clamp(0.0, 100.0);
+    Some(DiskSample {
+        name: name.to_string(),
+        pct,
+        used_gb: used,
+        total_gb: fs.d,
+    })
+}
+
+fn extract_failed_services(info: Option<&UpstreamSystemInfo>) -> Option<u16> {
+    let sv = info?.sv.as_deref()?;
+    let failed = *sv.get(1)?;
+    (failed > 0).then_some(failed)
+}
+
+fn extract_updates(info: Option<&UpstreamSystemInfo>) -> (Option<u16>, Option<u16>) {
+    let Some(pu) = info.and_then(|i| i.pu.as_deref()) else {
+        return (None, None);
+    };
+    let total = pu.first().copied().unwrap_or(0);
+    if total == 0 {
+        return (None, None);
+    }
+    let security = pu.get(1).copied().filter(|&s| s > 0);
+    (Some(total), security)
 }
 
 fn extract_top_containers(raw: &[UpstreamContainerStats]) -> Option<Vec<ContainerSample>> {
@@ -515,6 +599,9 @@ mod tests {
         assert_eq!(first.load_avg, Some([0.81, 0.76, 0.87]));
         assert_eq!(first.temp_max_c, Some(44.75));
         assert_eq!(first.battery_pct, Some(100));
+        assert_eq!(first.battery_state.as_deref(), Some("full"));
+        assert_eq!(first.failed_services, None);
+        assert_eq!(first.updates_total, None);
         assert_eq!(first.net_sent_bps, Some(9_001));
         assert_eq!(first.net_recv_bps, Some(92_367));
         assert_eq!(first.disk_pct, Some(6.94));
@@ -537,12 +624,20 @@ mod tests {
             "stats": {
                 "cpu": 25.0,
                 "mp": 40.0,
+                "bat": [78, 3],
                 "g": {
                     "0": {"n": "RTX 4060", "u": 62.5, "mu": 3072.0, "mt": 8192.0, "p": 88.4}
                 },
                 "z": {
                     "pool1": {"n": "tank", "h": "DEGRADED"}
+                },
+                "efs": {
+                    "data": {"d": 2000.0, "du": 1500.0}
                 }
+            },
+            "info": {
+                "sv": [42, 2],
+                "pu": [14, 3]
             },
             "container": [
                 {"n": "db", "c": 1.2, "m": 512.0},
@@ -566,6 +661,15 @@ mod tests {
             sample.unhealthy_pools,
             Some(vec!["tank: DEGRADED".to_string()])
         );
+        assert_eq!(sample.battery_pct, Some(78));
+        assert_eq!(sample.battery_state.as_deref(), Some("charging"));
+        assert_eq!(sample.failed_services, Some(2));
+        assert_eq!(sample.updates_total, Some(14));
+        assert_eq!(sample.updates_security, Some(3));
+        let extra = sample.extra_disks.expect("extra disks present");
+        assert_eq!(extra.len(), 1);
+        assert_eq!(extra[0].name, "data");
+        assert_eq!(extra[0].pct, 75.0);
     }
 
     #[test]

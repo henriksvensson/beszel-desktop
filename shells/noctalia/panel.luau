@@ -24,6 +24,7 @@ local selectedHostId = noctalia.state.get(SELECTED_HOST_KEY)
 local isOpen = false
 local copiedUntilMs = 0
 local pendingCopyCommand = nil
+local pendingBeszelUrl = nil
 
 local hoveredCpuIndex = nil
 local hoveredMemIndex = nil
@@ -252,6 +253,29 @@ local function hostIdentityLabel(sys)
   return table.concat(primaryParts, " · "), table.concat(tooltipParts, "\n")
 end
 
+local function batteryVisual(pct, state)
+  local level = tonumber(pct) or 0
+  if state == "charging" then
+    return "battery-charging", "primary", noctalia.tr("panel.battery_charging")
+  end
+  if state == "full" then
+    return "battery-4", "on_surface_variant", noctalia.tr("panel.battery_full")
+  end
+  if state == "idle" then
+    return "battery-3", "on_surface_variant", noctalia.tr("panel.battery_idle")
+  end
+  local glyph = "battery-1"
+  if level >= 85 then
+    glyph = "battery-4"
+  elseif level >= 55 then
+    glyph = "battery-3"
+  elseif level >= 25 then
+    glyph = "battery-2"
+  end
+  local color = level <= 15 and "error" or "on_surface_variant"
+  return glyph, color, noctalia.tr("panel.battery_discharging")
+end
+
 local function buildVitalsStrip(sys, latest)
   if noctalia.getConfig("show_vitals") == false then
     return nil
@@ -259,6 +283,56 @@ local function buildVitalsStrip(sys, latest)
 
   local leftLabel, leftTooltip = hostIdentityLabel(sys)
   local rightPills = {}
+
+  local failedServices = tonumber(latest.failed_services) or 0
+  if failedServices > 0 then
+    table.insert(rightPills, ui.row({
+      gap = 3,
+      align = "center",
+      tooltip = noctalia.tr("panel.failed_services_tooltip", { count = tostring(failedServices) }),
+    }, {
+      ui.glyph({ name = "alert-circle", size = 12, color = "error" }),
+      ui.label({
+        text = noctalia.tr("panel.failed_services", { count = tostring(failedServices) }),
+        fontSize = 11,
+        fontWeight = "semibold",
+        color = "error",
+        maxLines = 1,
+      }),
+    }))
+  end
+
+  local updatesTotal = tonumber(latest.updates_total) or 0
+  if updatesTotal > 0 then
+    local updatesSec = tonumber(latest.updates_security) or 0
+    local uColor = updatesSec > 0 and "tertiary" or "on_surface_variant"
+    local uText = updatesSec > 0
+      and noctalia.tr("panel.updates_security_short", {
+        total = tostring(updatesTotal),
+        security = tostring(updatesSec),
+      })
+      or noctalia.tr("panel.updates_short", { total = tostring(updatesTotal) })
+    local uTooltip = updatesSec > 0
+      and noctalia.tr("panel.updates_security_tooltip", {
+        total = tostring(updatesTotal),
+        security = tostring(updatesSec),
+      })
+      or noctalia.tr("panel.updates_tooltip", { total = tostring(updatesTotal) })
+    table.insert(rightPills, ui.row({
+      gap = 3,
+      align = "center",
+      tooltip = uTooltip,
+    }, {
+      ui.glyph({ name = "package", size = 12, color = uColor }),
+      ui.label({
+        text = uText,
+        fontSize = 11,
+        fontWeight = updatesSec > 0 and "semibold" or "normal",
+        color = uColor,
+        maxLines = 1,
+      }),
+    }))
+  end
 
   if latest.uptime_secs ~= nil then
     table.insert(rightPills, ui.row({ gap = 4, align = "center" }, {
@@ -312,12 +386,14 @@ local function buildVitalsStrip(sys, latest)
   end
 
   if latest.battery_pct ~= nil then
-    table.insert(rightPills, ui.row({ gap = 3, align = "center" }, {
-      ui.glyph({ name = "battery", size = 12, color = "on_surface_variant" }),
+    local batGlyph, batColor, batTooltip = batteryVisual(latest.battery_pct, latest.battery_state)
+    table.insert(rightPills, ui.row({ gap = 3, align = "center", tooltip = batTooltip }, {
+      ui.glyph({ name = batGlyph, size = 12, color = batColor }),
       ui.label({
         text = string.format("%d%%", math.floor((tonumber(latest.battery_pct) or 0) + 0.5)),
         fontSize = 11,
-        color = "on_surface_variant",
+        fontWeight = batColor ~= "on_surface_variant" and "semibold" or "normal",
+        color = batColor,
         maxLines = 1,
       }),
     }))
@@ -743,8 +819,9 @@ local function buildDiskSection(latest, warnPct, dangerPct)
   end
   local hasDiskPct = latest.disk_pct ~= nil
   local hasDiskIo = latest.disk_read_bps ~= nil or latest.disk_write_bps ~= nil
+  local extraDisks = type(latest.extra_disks) == "table" and latest.extra_disks or {}
   local unhealthy = type(latest.unhealthy_pools) == "table" and latest.unhealthy_pools or {}
-  if not hasDiskPct and not hasDiskIo and #unhealthy == 0 then
+  if not hasDiskPct and not hasDiskIo and #extraDisks == 0 and #unhealthy == 0 then
     return nil
   end
 
@@ -798,6 +875,54 @@ local function buildDiskSection(latest, warnPct, dangerPct)
         color = "on_surface",
       }),
     }))
+  end
+
+  if #extraDisks > 0 then
+    if #cardChildren > 0 then
+      table.insert(cardChildren, ui.separator({ color = "outline_variant/0.35" }))
+    end
+    for i, disk in ipairs(extraDisks) do
+      local pct = tonumber(disk.pct) or 0
+      local extraColor = fmt.severityColor(pct, "primary", warnPct, dangerPct)
+      table.insert(cardChildren, ui.column({
+        key = "efs-" .. tostring(i) .. "-" .. tostring(disk.name or ""),
+        gap = 3,
+      }, {
+        ui.row({ align = "center", justify = "space_between", gap = 6 }, {
+          ui.label({
+            text = tostring(disk.name or ""),
+            fontSize = 11,
+            color = "on_surface_variant",
+            flexGrow = 1,
+            maxLines = 1,
+          }),
+          ui.row({ gap = 6, align = "center" }, {
+            ui.label({
+              text = string.format(
+                "%.0f / %.0f GiB",
+                tonumber(disk.used_gb) or 0,
+                tonumber(disk.total_gb) or 0
+              ),
+              fontSize = 10,
+              color = "on_surface_variant",
+            }),
+            ui.label({
+              text = string.format("%.0f%%", pct),
+              fontSize = 11,
+              fontWeight = "semibold",
+              color = extraColor,
+            }),
+          }),
+        }),
+        ui.progress({
+          progress = fmt.clamp(pct / 100.0, 0, 1),
+          fill = extraColor,
+          track = "surface_container_highest",
+          height = 4,
+          radius = 2,
+        }),
+      }))
+    end
   end
 
   if #unhealthy > 0 then
@@ -1002,6 +1127,33 @@ render = function()
     statusText = fmt.stateLabel(state, "")
   end
 
+  pendingBeszelUrl = nil
+  if type(data) == "table" and type(data.hubUrl) == "string"
+      and string.match(data.hubUrl, "^https?://") ~= nil
+      and sys ~= nil and type(sys.id) == "string" and sys.id ~= "" then
+    pendingBeszelUrl = string.gsub(data.hubUrl, "/+$", "") .. "/system/" .. sys.id
+  end
+
+  local headerActions = {}
+  if pendingBeszelUrl ~= nil then
+    table.insert(headerActions, ui.button({
+      glyph = "external-link",
+      glyphSize = 14,
+      variant = "ghost",
+      controlSize = "sm",
+      tooltip = noctalia.tr("panel.open_in_beszel", { host = title }),
+      onClick = "onOpenInBeszel",
+    }))
+  end
+  table.insert(headerActions, ui.button({
+    glyph = "settings",
+    glyphSize = 14,
+    variant = "ghost",
+    controlSize = "sm",
+    tooltip = noctalia.tr("panel.open_settings"),
+    onClick = "onOpenSettings",
+  }))
+
   local header = ui.row({ align = "center", justify = "space_between", gap = 8 }, {
     ui.column({ gap = 2, flexGrow = 1 }, {
       ui.label({
@@ -1018,14 +1170,7 @@ render = function()
         maxLines = 2,
       }),
     }),
-    ui.button({
-      glyph = "settings",
-      glyphSize = 14,
-      variant = "ghost",
-      controlSize = "sm",
-      tooltip = noctalia.tr("panel.open_settings"),
-      onClick = "onOpenSettings",
-    }),
+    ui.row({ gap = 4, align = "center" }, headerActions),
   })
 
   if latest == nil then
@@ -1164,6 +1309,14 @@ end
 
 function onOpenSettings()
   noctalia.openSettings()
+end
+
+function onOpenInBeszel()
+  if type(pendingBeszelUrl) ~= "string" or string.match(pendingBeszelUrl, "^https?://") == nil then
+    return
+  end
+  noctalia.runAsync({ "xdg-open", pendingBeszelUrl })
+  panel.close()
 end
 
 function onCopySetupCommand()

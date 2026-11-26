@@ -80,6 +80,15 @@ pub struct ContainerSample {
     pub mem_mb: f64,
 }
 
+/// Single extra mounted filesystem snapshot within a `LiveSample`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DiskSample {
+    pub name: String,
+    pub pct: f64,
+    pub used_gb: f64,
+    pub total_gb: f64,
+}
+
 /// Single live (~1 Hz) system telemetry sample stamped locally by `beszel-relay`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct LiveSample {
@@ -114,6 +123,18 @@ pub struct LiveSample {
     /// Battery charge percentage (`0..=100`), when present.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub battery_pct: Option<u8>,
+    /// Battery charge state (`"charging"`, `"discharging"`, `"full"`, `"idle"`, `"empty"`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub battery_state: Option<String>,
+    /// Count of failed systemd units when `> 0`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failed_services: Option<u16>,
+    /// Total pending OS package updates when `> 0`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updates_total: Option<u16>,
+    /// Pending security package updates when `> 0`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updates_security: Option<u16>,
     /// Aggregate network transmit rate in bytes/sec.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub net_sent_bps: Option<u64>,
@@ -135,6 +156,9 @@ pub struct LiveSample {
     /// Aggregate disk write rate in bytes/sec.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub disk_write_bps: Option<u64>,
+    /// Extra mounted filesystems reported by the agent (`stats.efs`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extra_disks: Option<Vec<DiskSample>>,
     /// Storage pools reporting a health state other than `"ONLINE"`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unhealthy_pools: Option<Vec<String>>,
@@ -163,6 +187,8 @@ pub enum RelayEvent {
     Snapshot {
         protocol_version: u32,
         generated_at_ms: i64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        hub_url: Option<String>,
         connection: ConnectionStatus,
         systems: Vec<SystemLiveState>,
     },
@@ -199,6 +225,7 @@ mod tests {
         let event = RelayEvent::Snapshot {
             protocol_version: LOCAL_PROTOCOL_VERSION,
             generated_at_ms: 1_700_000_005_000,
+            hub_url: Some("https://beszel.example.test".into()),
             connection: ConnectionStatus {
                 state: ConnectionState::Connected,
                 since_ms: 1_700_000_000_000,
