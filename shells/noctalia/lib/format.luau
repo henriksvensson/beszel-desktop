@@ -141,6 +141,47 @@ function M.formatUptime(secs)
   return string.format("%dm", math.max(1, mins))
 end
 
+function M.cleanOsName(name)
+  if type(name) ~= "string" then
+    return nil
+  end
+  local s = noctalia.string.trim(name)
+  if s == "" then
+    return nil
+  end
+  s = string.gsub(s, "%s*%b()", "")
+  s = string.gsub(s, "%s+GNU/Linux", "")
+  s = string.gsub(s, "^Fedora%s+Linux%s+", "Fedora ")
+  s = string.gsub(s, "%s+", " ")
+  s = noctalia.string.trim(s)
+  return s ~= "" and s or nil
+end
+
+function M.cleanCpuModel(model)
+  if type(model) ~= "string" then
+    return nil
+  end
+  local s = noctalia.string.trim(model)
+  if s == "" then
+    return nil
+  end
+  s = string.gsub(s, "%([RrTt][Mm]?%)", "")
+  s = string.gsub(s, "%([Cc]%)", "")
+  s = string.gsub(s, "®", "")
+  s = string.gsub(s, "™", "")
+  s = string.gsub(s, "%s*@%s*[%d%.]+%s*[GMK]?Hz.*$", "")
+  s = string.gsub(s, "%s+[Ww]/%s+Radeon.*$", "")
+  s = string.gsub(s, "%s+[Ww]ith%s+Radeon.*$", "")
+  s = string.gsub(s, "^%d+[a-z][a-z]%s+Gen%s+", "")
+  s = string.gsub(s, "%s+%d+%-Core", "")
+  s = string.gsub(s, "%s+Processor", "")
+  s = string.gsub(s, "%s+CPU%s+", " ")
+  s = string.gsub(s, "%s+CPU$", "")
+  s = string.gsub(s, "%s+", " ")
+  s = noctalia.string.trim(s)
+  return s ~= "" and s or nil
+end
+
 function M.primaryGpu(sample)
   if type(sample) ~= "table" or type(sample.gpus) ~= "table" or #sample.gpus == 0 then
     return nil

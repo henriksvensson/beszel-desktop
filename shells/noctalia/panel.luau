@@ -211,11 +211,13 @@ local function hostIdentityLabel(sys)
   if type(sys) ~= "table" then
     return nil, nil
   end
-  local osLabel = (type(sys.os_name) == "string" and sys.os_name ~= "") and sys.os_name or nil
+  local rawOs = (type(sys.os_name) == "string" and sys.os_name ~= "") and sys.os_name or nil
+  local osLabel = fmt.cleanOsName(rawOs)
   if osLabel == nil and type(sys.os) == "string" and sys.os ~= "" then
     osLabel = string.upper(string.sub(sys.os, 1, 1)) .. string.sub(sys.os, 2)
   end
-  local cpu = (type(sys.cpu_model) == "string" and sys.cpu_model ~= "") and sys.cpu_model or nil
+  local rawCpu = (type(sys.cpu_model) == "string" and sys.cpu_model ~= "") and sys.cpu_model or nil
+  local cpuLabel = fmt.cleanCpuModel(rawCpu)
   local kernel = (type(sys.kernel) == "string" and sys.kernel ~= "") and sys.kernel or nil
   local arch = (type(sys.arch) == "string" and sys.arch ~= "") and sys.arch or nil
 
@@ -223,8 +225,8 @@ local function hostIdentityLabel(sys)
   if osLabel ~= nil then
     table.insert(primaryParts, osLabel)
   end
-  if cpu ~= nil then
-    table.insert(primaryParts, cpu)
+  if cpuLabel ~= nil then
+    table.insert(primaryParts, cpuLabel)
   elseif kernel ~= nil then
     table.insert(primaryParts, kernel)
   end
@@ -234,14 +236,14 @@ local function hostIdentityLabel(sys)
   end
 
   local tooltipParts = {}
-  if osLabel ~= nil then
-    table.insert(tooltipParts, osLabel)
+  if rawOs ~= nil or osLabel ~= nil then
+    table.insert(tooltipParts, rawOs or osLabel)
   end
   if kernel ~= nil then
     table.insert(tooltipParts, "Kernel " .. kernel)
   end
-  if cpu ~= nil then
-    table.insert(tooltipParts, cpu)
+  if rawCpu ~= nil then
+    table.insert(tooltipParts, rawCpu)
   end
   if arch ~= nil then
     table.insert(tooltipParts, arch)
