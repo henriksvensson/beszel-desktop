@@ -451,10 +451,9 @@ render = function()
   local headerActions = {}
   if showPinButton then
     table.insert(headerActions, ui.button({
-      text = noctalia.tr("panel.pin_to_bar"),
       glyph = "pin",
-      glyphSize = 13,
-      variant = "secondary",
+      glyphSize = 14,
+      variant = "ghost",
       controlSize = "sm",
       tooltip = noctalia.tr("panel.pin_to_bar_tooltip", { host = sys.name }),
       onClick = "onPinToBar",
@@ -664,14 +663,14 @@ function onPinToBar()
   end
   local widgetId = pendingPinWidgetId
   local hostName = pendingPinHostName
-  noctalia.exec({
+  noctalia.runAsync({
     resolveNoctaliaBin(),
     "msg",
     "config-set",
     "widget." .. widgetId .. ".system",
     tomlQuoteString(hostName),
   }, function(res)
-    if res ~= nil and res.ok then
+    if res ~= nil and res.exitCode == 0 and not res.timedOut then
       openedSource = {
         configuredFilter = hostName,
         displayedHostId = selectedHostId,

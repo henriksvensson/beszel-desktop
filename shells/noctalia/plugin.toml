@@ -5,7 +5,7 @@ plugin_api   = 48
 author       = "henriksvensson"
 license      = "MIT"
 icon         = "cpu-usage"
-description  = "Monitor remote hosts live (~1 Hz CPU, memory, per-core heatmap) from a Beszel hub via beszel-relay."
+description  = "Monitor remote hosts live from a Beszel hub."
 tags         = ["bar", "panel", "service", "system", "monitoring", "beszel"]
 dependencies = ["beszel-ctl"]
 
