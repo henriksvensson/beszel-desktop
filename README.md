@@ -65,6 +65,12 @@ beszel-ctl status
 beszel-ctl watch
 ```
 
+Update `~/.local/bin` binaries later (downloads & SHA-256-verifies the latest GitHub Release and restarts `beszel-relay.service`):
+
+```sh
+beszel-ctl update
+```
+
 ### 2. Add a desktop widget
 
 Follow the setup guide for your shell:

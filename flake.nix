@@ -14,7 +14,7 @@
       packages = forAllSystems (pkgs: rec {
         beszel-desktop = pkgs.rustPlatform.buildRustPackage {
           pname = "beszel-desktop";
-          version = "0.2.0";
+          version = "0.3.0";
 
           src = self;
 

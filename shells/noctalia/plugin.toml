@@ -1,6 +1,6 @@
 id           = "henriksvensson/beszel-desktop"
 name         = "Beszel Desktop"
-version      = "0.2.0"
+version      = "0.3.0"
 plugin_api   = 48
 author       = "henriksvensson"
 license      = "MIT"

@@ -8,7 +8,18 @@ Download SHA-256-verified release binaries into `~/.local/bin` and launch the in
 curl -fsSL https://raw.githubusercontent.com/henriksvensson/beszel-desktop/main/packaging/install.sh | sh
 ```
 
-Pass `--no-init` to install binaries without running `beszel-ctl init`, or `--version v0.1.0` to pin a release tag.
+Pass `--no-init` to install binaries without running `beszel-ctl init`, or `--version v0.3.0` to pin a release tag.
+
+## Updating
+
+For `~/.local/bin` installs, run:
+
+```sh
+beszel-ctl update        # downloads & verifies latest release, swaps binaries, restarts service
+beszel-ctl update --check
+```
+
+Distro-packaged installs (`/usr/bin`, `/nix/store`) are updated through your package manager (`dnf upgrade`, `yay -Syu`, `nix profile upgrade`).
 
 ## Manual Build & Setup
 

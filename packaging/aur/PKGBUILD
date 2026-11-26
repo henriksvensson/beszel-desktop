@@ -1,6 +1,6 @@
 # Maintainer: Henrik Svensson <1612710+henriksvensson@users.noreply.github.com>
 pkgname=beszel-desktop
-pkgver=0.2.0
+pkgver=0.3.0
 pkgrel=1
 pkgdesc="Live Beszel metrics daemon (beszel-relay), CLI (beszel-ctl), and Wayland shell widgets"
 arch=('x86_64' 'aarch64')

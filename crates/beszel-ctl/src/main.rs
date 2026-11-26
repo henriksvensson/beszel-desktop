@@ -1,5 +1,6 @@
 mod format;
 mod init;
+mod update;
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -30,6 +31,8 @@ struct Args {
 enum Command {
     /// Interactive setup wizard: configure hub credentials and start beszel-relay.
     Init(init::InitArgs),
+    /// Check for or install the latest verified GitHub Release binaries.
+    Update(update::UpdateArgs),
     /// Connect, print the current snapshot and history count, then exit.
     Status,
     /// Stream live updates from beszel-relay.
@@ -65,6 +68,7 @@ async fn main() -> Result<()> {
 
     match args.command {
         Command::Init(opts) => init::run_init(opts, &socket_path).await,
+        Command::Update(opts) => update::run_update(opts).await,
         Command::Status => run_status(&socket_path).await,
         Command::Watch { raw, reconnect } => run_watch(&socket_path, raw, reconnect).await,
         Command::Waybar {

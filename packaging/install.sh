@@ -111,4 +111,8 @@ if [ "$RUN_INIT" -eq 1 ]; then
     else
         echo "Non-interactive session detected. Run '${INSTALL_DIR}/beszel-ctl init' to configure your Beszel hub."
     fi
+else
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl --user try-restart beszel-relay.service >/dev/null 2>&1 || true
+    fi
 fi

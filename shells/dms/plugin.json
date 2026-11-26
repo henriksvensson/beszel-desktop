@@ -2,7 +2,7 @@
   "id": "beszelDesktop",
   "name": "Beszel Desktop",
   "description": "Monitor remote servers and homelab hosts live (~1 Hz CPU, memory, per-core heatmap) from a Beszel hub via beszel-relay",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": "henriksvensson",
   "license": "MIT",
   "type": "widget",

@@ -1,5 +1,5 @@
 Name:           beszel-desktop
-Version:        0.2.0
+Version:        0.3.0
 Release:        1%{?dist}
 Summary:        Live Beszel metrics daemon, CLI, and Wayland desktop shell widgets
 
@@ -48,6 +48,9 @@ cp -r shells/dms shells/noctalia shells/waybar %{buildroot}%{_datadir}/%{name}/s
 %{_datadir}/%{name}/shells/
 
 %changelog
+* Thu Nov 26 2026 Henrik Svensson <1612710+henriksvensson@users.noreply.github.com> - 0.3.0-1
+- Add `beszel-ctl update`, Noctalia Pin-to-bar, scroll-to-switch, and monochrome bar icons
+
 * Thu Nov 26 2026 Henrik Svensson <1612710+henriksvensson@users.noreply.github.com> - 0.2.0-1
 - Add `beszel-ctl init` interactive setup wizard, checksum-verified installer script, and Noctalia onboarding card
 
