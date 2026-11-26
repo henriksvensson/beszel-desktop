@@ -52,13 +52,13 @@ Sections automatically hide themselves on hosts that do not report the correspon
 
 | Setting | Type | Default | Description |
 | --- | --- | --- | --- |
-| `show_vitals` | `bool` | `true` | Show the compact vitals strip (uptime, peak temperature, and battery). |
+| `show_vitals` | `bool` | `true` | Show the compact vitals strip (OS/CPU, uptime, pending OS/security updates, failed systemd services, peak temperature, and battery state). |
 | `show_load` | `bool` | `false` | Show 1/5/15-minute load averages (with core count context) in the vitals strip. |
 | `show_cores` | `bool` | `true` | Show the frame-interpolated per-core CPU heatmap. |
 | `show_swap` | `bool` | `true` | Show swap usage under the memory graph whenever swap is in use. |
 | `show_gpu` | `bool` | `true` | Show primary GPU utilization sparkline, VRAM usage, and power draw. |
 | `show_network` | `bool` | `true` | Show live download and upload throughput rates with a dual-series sparkline. |
-| `show_disk` | `bool` | `true` | Show root disk usage bar, live disk read/write rates, and degraded storage pool warnings. |
+| `show_disk` | `bool` | `true` | Show root and extra mounted disk usage bars, live disk read/write rates, and degraded storage pool warnings. |
 | `show_containers` | `bool` | `false` | Show top Docker/Podman containers by CPU usage. |
 
 ### Bar Widget Settings (`henriksvensson/beszel-desktop:bar`)
@@ -76,6 +76,6 @@ Sections automatically hide themselves on hosts that do not report the correspon
 
 ## Notes
 
-- **Spawned processes:** The singleton `service` entry runs one long-lived `beszel-ctl watch --raw --reconnect` process (reading from the local user-only Unix socket `$XDG_RUNTIME_DIR/beszel-relay.sock`) and shares parsed snapshots/samples through `noctalia.state`.
+- **Spawned processes:** The singleton `service` entry runs one long-lived `beszel-ctl watch --raw --reconnect` process (reading from the local user-only Unix socket `$XDG_RUNTIME_DIR/beszel-relay.sock`) and shares parsed snapshots/samples through `noctalia.state`. Clicking the external-link button in the panel header runs `xdg-open <hub_url>/system/<id>` (scheme-validated `http://` or `https://`, passed via direct argv without shell parsing) to open that host in your Beszel web UI.
 - **Network & credentials:** This plugin makes no network requests, writes no files, and never accesses Beszel hub credentials (credentials stay inside `beszel-relay`).
 - **Auto-pause:** Disabling the plugin stops the `beszel-ctl` stream, allowing `beszel-relay` to pause upstream `rt_metrics` polling automatically.

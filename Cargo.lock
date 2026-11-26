@@ -87,7 +87,7 @@ checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
 
 [[package]]
 name = "beszel-ctl"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "beszel-protocol",
@@ -101,7 +101,7 @@ dependencies = [
 
 [[package]]
 name = "beszel-protocol"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -109,7 +109,7 @@ dependencies = [
 
 [[package]]
 name = "beszel-relay"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "beszel-protocol",
