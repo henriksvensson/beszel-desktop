@@ -1,6 +1,7 @@
 # Beszel Desktop
 
 [![CI](https://github.com/henriksvensson/beszel-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/henriksvensson/beszel-desktop/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/beszel-relay.svg)](https://crates.io/crates/beszel-relay)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Monitor **remote servers, homelab nodes, and other machines** live (~1 Hz) right from your Linux Wayland desktop bar — without keeping a browser tab open to a monitoring dashboard.
@@ -45,6 +46,7 @@ curl -fsSL https://raw.githubusercontent.com/henriksvensson/beszel-desktop/main/
 
 Prefer to install via a package manager or from source?
 
+- **Cargo (`crates.io`):** `cargo install beszel-relay beszel-ctl && beszel-ctl init` *(or `cargo binstall beszel-relay beszel-ctl` for prebuilt binaries)*
 - **Homebrew (Linux):** `brew install henriksvensson/tap/beszel-desktop && beszel-ctl init`
 - **Nix:** `nix profile install github:henriksvensson/beszel-desktop && beszel-ctl init`
 - **Debian / Ubuntu (`.deb`) & Fedora / openSUSE (`.rpm`):** Download from [GitHub Releases](https://github.com/henriksvensson/beszel-desktop/releases), install with `apt`/`dnf`, then run `beszel-ctl init`
