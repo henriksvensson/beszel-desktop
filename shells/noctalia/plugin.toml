@@ -6,7 +6,7 @@ author       = "henriksvensson"
 license      = "MIT"
 icon         = "cpu-usage"
 description  = "Monitor remote hosts live from a Beszel hub."
-tags         = ["bar", "panel", "service", "system", "monitoring", "beszel"]
+tags         = ["bar", "panel", "service", "system", "indicator"]
 dependencies = ["beszel-ctl"]
 
 [[setting]]

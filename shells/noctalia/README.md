@@ -2,9 +2,7 @@
 
 Monitor remote servers, homelab nodes, and other machines live (~1 Hz) from a [Beszel](https://beszel.dev) hub — rendered in compact Noctalia bar pills and an attached real-time telemetry panel with CPU/memory sparklines and a per-core heatmap.
 
-<p align="center">
-  <img src="../../docs/assets/noctalia-panel.gif" alt="Beszel Desktop live telemetry panel in Noctalia Shell" width="374">
-</p>
+![Beszel Desktop live telemetry panel in Noctalia Shell](../../docs/assets/noctalia-panel.gif)
 
 ## Plugin
 
