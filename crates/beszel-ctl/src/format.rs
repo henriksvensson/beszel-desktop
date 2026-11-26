@@ -260,6 +260,7 @@ mod tests {
                     name: "workstation".into(),
                     status: "up".into(),
                     agent_version: Some("0.21.2".into()),
+                    ..SystemSummary::default()
                 },
                 Some(sample(5000, 12.4, 48.6)),
             )],

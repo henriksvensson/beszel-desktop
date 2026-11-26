@@ -33,6 +33,54 @@ pub struct SystemsListResponse {
     pub items: Vec<UpstreamSystemRecord>,
 }
 
+/// PocketBase `GET /api/collections/system_details/records` paginated response.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SystemDetailsListResponse {
+    #[serde(default)]
+    pub items: Vec<UpstreamSystemDetailsRecord>,
+}
+
+/// Static host metadata stored in Beszel's `system_details` collection.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct UpstreamSystemDetailsRecord {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub system: String,
+    #[serde(default)]
+    pub os: Option<u8>,
+    #[serde(default)]
+    pub os_name: Option<String>,
+    #[serde(default)]
+    pub kernel: Option<String>,
+    #[serde(default)]
+    pub cpu: Option<String>,
+    #[serde(default)]
+    pub arch: Option<String>,
+}
+
+impl UpstreamSystemDetailsRecord {
+    /// System ID key used to join with `UpstreamSystemRecord`.
+    pub fn system_key(&self) -> &str {
+        if !self.system.is_empty() {
+            &self.system
+        } else {
+            &self.id
+        }
+    }
+}
+
+/// Map Beszel's numeric OS enum (`0=Linux, 1=Darwin, 2=Windows, 3=FreeBSD`) to a stable label.
+pub fn os_family_label(code: u8) -> Option<&'static str> {
+    match code {
+        0 => Some("linux"),
+        1 => Some("macos"),
+        2 => Some("windows"),
+        3 => Some("freebsd"),
+        _ => None,
+    }
+}
+
 /// System record returned by Beszel's `systems` collection.
 #[derive(Debug, Clone, Deserialize)]
 pub struct UpstreamSystemRecord {
@@ -97,6 +145,15 @@ pub struct UpstreamSystemInfo {
     /// Battery `[percent, state]`.
     #[serde(default)]
     pub bat: Option<[u8; 2]>,
+    /// Legacy OS enum (`0=Linux, 1=Darwin, 2=Windows, 3=FreeBSD`) for hubs without `system_details`.
+    #[serde(default)]
+    pub os: Option<u8>,
+    /// Legacy kernel version for hubs without `system_details`.
+    #[serde(default)]
+    pub k: Option<String>,
+    /// Legacy CPU model for hubs without `system_details`.
+    #[serde(default)]
+    pub m: Option<String>,
 }
 
 /// Upstream per-GPU metrics map entry (`stats.g`).

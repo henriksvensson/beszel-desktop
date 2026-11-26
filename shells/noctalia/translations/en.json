@@ -146,6 +146,7 @@
     "host": "Host",
     "memory": "Memory",
     "network": "Network",
+    "os": "OS",
     "status": "Status",
     "swap": "Swap",
     "temp": "Temperature",

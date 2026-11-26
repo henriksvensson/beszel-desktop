@@ -232,6 +232,7 @@ mod tests {
             name: "host-a".into(),
             status: "up".into(),
             agent_version: Some("0.21.2".into()),
+            ..SystemSummary::default()
         }]);
 
         for i in 1..=5 {
@@ -261,6 +262,7 @@ mod tests {
             name: "host-a".into(),
             status: "up".into(),
             agent_version: Some("0.21.2".into()),
+            ..SystemSummary::default()
         };
         state.set_systems(vec![summary.clone()]);
         state.record_sample("sys1", sample(1000, 10.0));

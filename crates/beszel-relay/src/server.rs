@@ -166,6 +166,7 @@ mod tests {
             name: "host-a".into(),
             status: "up".into(),
             agent_version: Some("0.21.2".into()),
+            ..SystemSummary::default()
         }]);
         state.set_connection(ConnectionState::Connected, None, 0);
         state.record_sample("sys1", test_sample(1000, 5.0, 20.0));

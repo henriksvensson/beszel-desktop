@@ -5,8 +5,8 @@ use anyhow::{Result, anyhow, bail};
 use beszel_protocol::local::{ConnectionState, SystemSummary};
 use beszel_protocol::upstream::{
     AuthResponse, PbConnectEvent, RealtimeSubscribeRequest, RtMetricsPayload,
-    SYSTEMS_COLLECTION_TOPIC, SystemsListResponse, SystemsRealtimeEvent, UpstreamSystemRecord,
-    rt_metrics_topic,
+    SYSTEMS_COLLECTION_TOPIC, SystemDetailsListResponse, SystemsListResponse, SystemsRealtimeEvent,
+    UpstreamSystemDetailsRecord, UpstreamSystemRecord, os_family_label, rt_metrics_topic,
 };
 use futures_util::StreamExt;
 use reqwest::{Client, StatusCode};
@@ -143,6 +143,7 @@ struct ActiveSession<'a> {
     token: String,
     client_id: String,
     known_records: HashMap<String, UpstreamSystemRecord>,
+    known_details: HashMap<String, UpstreamSystemDetailsRecord>,
     current_systems: Vec<SystemSummary>,
     subs: SubscriptionMap,
     streaming_metrics: bool,
@@ -203,8 +204,12 @@ impl<'a> ActiveSession<'a> {
 
         apply_record_mutation(&mut self.known_records, parsed);
         let records: Vec<UpstreamSystemRecord> = self.known_records.values().cloned().collect();
-        let next_systems =
-            select_systems(&records, self.hub.config.system.as_deref()).unwrap_or_default();
+        let next_systems = select_systems(
+            &records,
+            &self.known_details,
+            self.hub.config.system.as_deref(),
+        )
+        .unwrap_or_default();
 
         if next_systems == self.current_systems {
             return Ok(());
@@ -238,8 +243,9 @@ impl HubClient<'_> {
             .fetch_systems(&token)
             .await
             .inspect_err(|err| clear_token_on_auth_error(err, cached_token))?;
+        let details = self.fetch_system_details(&token).await;
 
-        let systems = select_systems(&records, self.config.system.as_deref())
+        let systems = select_systems(&records, &details, self.config.system.as_deref())
             .map_err(|e| SessionError::Transient(e.to_string()))?;
         let names: Vec<&str> = systems.iter().map(|s| s.name.as_str()).collect();
         info!(count = systems.len(), systems = ?names, "Discovered Beszel systems");
@@ -257,6 +263,7 @@ impl HubClient<'_> {
             token,
             client_id,
             known_records: records.into_iter().map(|r| (r.id.clone(), r)).collect(),
+            known_details: details,
             current_systems: systems.clone(),
             subs: SubscriptionMap::from_systems(&systems),
             streaming_metrics: self.state.client_count() > 0,
@@ -361,6 +368,38 @@ impl HubClient<'_> {
             .await
             .map_err(|e| SessionError::Transient(format!("invalid systems list: {e}")))?;
         Ok(list.items)
+    }
+
+    async fn fetch_system_details(
+        &self,
+        token: &str,
+    ) -> HashMap<String, UpstreamSystemDetailsRecord> {
+        let url = format!(
+            "{}/api/collections/system_details/records?perPage=200",
+            self.config.hub_url
+        );
+        let Ok(resp) = self
+            .client
+            .get(&url)
+            .timeout(HTTP_TIMEOUT)
+            .header("Authorization", token)
+            .send()
+            .await
+        else {
+            return HashMap::new();
+        };
+        if !resp.status().is_success() {
+            debug!(status = %resp.status(), "system_details collection unavailable");
+            return HashMap::new();
+        }
+        let Ok(list) = resp.json::<SystemDetailsListResponse>().await else {
+            return HashMap::new();
+        };
+        list.items
+            .into_iter()
+            .filter(|item| !item.system_key().is_empty())
+            .map(|item| (item.system_key().to_string(), item))
+            .collect()
     }
 
     async fn open_sse_stream(&self) -> std::result::Result<reqwest::Response, SessionError> {
@@ -638,6 +677,7 @@ fn is_unauthorized(status: StatusCode) -> bool {
 
 fn select_systems(
     records: &[UpstreamSystemRecord],
+    details: &HashMap<String, UpstreamSystemDetailsRecord>,
     requested: Option<&str>,
 ) -> Result<Vec<SystemSummary>> {
     if records.is_empty() {
@@ -657,7 +697,10 @@ fn select_systems(
         }
     };
 
-    let mut summaries: Vec<SystemSummary> = chosen.into_iter().map(to_summary).collect();
+    let mut summaries: Vec<SystemSummary> = chosen
+        .into_iter()
+        .map(|record| to_summary(record, details.get(&record.id)))
+        .collect();
     summaries.sort_by_key(|s| s.name.to_lowercase());
     Ok(summaries)
 }
@@ -689,12 +732,40 @@ fn match_requested_systems<'a>(
     Ok(matched)
 }
 
-fn to_summary(record: &UpstreamSystemRecord) -> SystemSummary {
+fn non_empty_trimmed(val: Option<&String>) -> Option<String> {
+    val.map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
+fn to_summary(
+    record: &UpstreamSystemRecord,
+    details: Option<&UpstreamSystemDetailsRecord>,
+) -> SystemSummary {
+    let info = record.info.as_ref();
+    let os_code = details
+        .and_then(|d| d.os)
+        .or_else(|| info.and_then(|i| i.os));
+    let os = os_code.and_then(os_family_label).map(str::to_string);
+    let os_name = details.and_then(|d| non_empty_trimmed(d.os_name.as_ref()));
+    let kernel = details
+        .and_then(|d| non_empty_trimmed(d.kernel.as_ref()))
+        .or_else(|| info.and_then(|i| non_empty_trimmed(i.k.as_ref())));
+    let cpu_model = details
+        .and_then(|d| non_empty_trimmed(d.cpu.as_ref()))
+        .or_else(|| info.and_then(|i| non_empty_trimmed(i.m.as_ref())));
+    let arch = details.and_then(|d| non_empty_trimmed(d.arch.as_ref()));
+
     SystemSummary {
         id: record.id.clone(),
         name: record.name.clone(),
         status: record.status.clone(),
-        agent_version: record.info.as_ref().and_then(|info| info.v.clone()),
+        agent_version: info.and_then(|i| i.v.clone()),
+        os_name,
+        os,
+        kernel,
+        cpu_model,
+        arch,
     }
 }
 
@@ -753,15 +824,31 @@ mod tests {
     #[test]
     fn selects_all_up_systems_by_default_sorted_by_name() {
         let records = sample_records();
-        let selected = select_systems(&records, None).expect("default selection should succeed");
+        let details = HashMap::from([(
+            "id_a".to_string(),
+            UpstreamSystemDetailsRecord {
+                id: "id_a".into(),
+                system: "id_a".into(),
+                os: Some(0),
+                os_name: Some("Ubuntu 24.04.2 LTS".into()),
+                kernel: Some("6.8.0-55-generic".into()),
+                cpu: Some("AMD EPYC 7763".into()),
+                arch: Some("amd64".into()),
+            },
+        )]);
+        let selected =
+            select_systems(&records, &details, None).expect("default selection should succeed");
         let ids: Vec<&str> = selected.iter().map(|s| s.id.as_str()).collect();
         assert_eq!(ids, vec!["id_a", "id_b"]);
+        assert_eq!(selected[0].os_name.as_deref(), Some("Ubuntu 24.04.2 LTS"));
+        assert_eq!(selected[0].os.as_deref(), Some("linux"));
+        assert_eq!(selected[0].cpu_model.as_deref(), Some("AMD EPYC 7763"));
     }
 
     #[test]
     fn selects_specific_or_comma_separated_systems() {
         let records = sample_records();
-        let selected = select_systems(&records, Some("WORKSTATION, offline"))
+        let selected = select_systems(&records, &HashMap::new(), Some("WORKSTATION, offline"))
             .expect("comma filter should succeed");
         let names: Vec<&str> = selected.iter().map(|s| s.name.as_str()).collect();
         assert_eq!(names, vec!["offline", "workstation"]);
@@ -769,7 +856,7 @@ mod tests {
 
     #[test]
     fn routes_sse_events_to_matching_system_id() {
-        let systems = select_systems(&sample_records(), None).expect("systems");
+        let systems = select_systems(&sample_records(), &HashMap::new(), None).expect("systems");
         let subs = SubscriptionMap::from_systems(&systems);
         let topic_b = rt_metrics_topic("id_b");
         assert_eq!(subs.system_id_for(&topic_b), Some("id_b"));
@@ -778,7 +865,7 @@ mod tests {
 
     #[test]
     fn paused_subscriptions_exclude_rt_metrics_topics() {
-        let systems = select_systems(&sample_records(), None).expect("systems");
+        let systems = select_systems(&sample_records(), &HashMap::new(), None).expect("systems");
         let subs = SubscriptionMap::from_systems(&systems);
         assert_eq!(
             subs.all_subscriptions(false),

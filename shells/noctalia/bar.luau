@@ -38,6 +38,9 @@ local function buildTooltip(sys, latest, state, filter)
   local rows = {}
   if sys ~= nil then
     table.insert(rows, { key = noctalia.tr("tooltip.host"), value = sys.name })
+    if type(sys.os_name) == "string" and sys.os_name ~= "" then
+      table.insert(rows, { key = noctalia.tr("tooltip.os"), value = sys.os_name })
+    end
   end
   if latest ~= nil then
     table.insert(rows, {

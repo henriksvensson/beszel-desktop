@@ -181,18 +181,92 @@ local function cardHeader(titleText, rightNode)
   })
 end
 
-local function buildVitalsStrip(latest)
+local function hostGlyph(sys, latest)
+  local osName = (type(sys) == "table" and type(sys.os_name) == "string")
+    and string.lower(sys.os_name)
+    or ""
+  local osFamily = (type(sys) == "table" and type(sys.os) == "string")
+    and string.lower(sys.os)
+    or ""
+
+  if string.find(osName, "ubuntu", 1, true) ~= nil then
+    return "brand-ubuntu"
+  end
+  if string.find(osName, "debian", 1, true) ~= nil then
+    return "brand-debian"
+  end
+  if osFamily == "macos" or string.find(osName, "macos", 1, true) ~= nil then
+    return "brand-apple"
+  end
+  if osFamily == "windows" or string.find(osName, "windows", 1, true) ~= nil then
+    return "brand-windows"
+  end
+  if type(latest) == "table" and latest.battery_pct ~= nil then
+    return "device-laptop"
+  end
+  return "server"
+end
+
+local function hostIdentityLabel(sys)
+  if type(sys) ~= "table" then
+    return nil, nil
+  end
+  local osLabel = (type(sys.os_name) == "string" and sys.os_name ~= "") and sys.os_name or nil
+  if osLabel == nil and type(sys.os) == "string" and sys.os ~= "" then
+    osLabel = string.upper(string.sub(sys.os, 1, 1)) .. string.sub(sys.os, 2)
+  end
+  local cpu = (type(sys.cpu_model) == "string" and sys.cpu_model ~= "") and sys.cpu_model or nil
+  local kernel = (type(sys.kernel) == "string" and sys.kernel ~= "") and sys.kernel or nil
+  local arch = (type(sys.arch) == "string" and sys.arch ~= "") and sys.arch or nil
+
+  local primaryParts = {}
+  if osLabel ~= nil then
+    table.insert(primaryParts, osLabel)
+  end
+  if cpu ~= nil then
+    table.insert(primaryParts, cpu)
+  elseif kernel ~= nil then
+    table.insert(primaryParts, kernel)
+  end
+
+  if #primaryParts == 0 then
+    return nil, nil
+  end
+
+  local tooltipParts = {}
+  if osLabel ~= nil then
+    table.insert(tooltipParts, osLabel)
+  end
+  if kernel ~= nil then
+    table.insert(tooltipParts, "Kernel " .. kernel)
+  end
+  if cpu ~= nil then
+    table.insert(tooltipParts, cpu)
+  end
+  if arch ~= nil then
+    table.insert(tooltipParts, arch)
+  end
+
+  return table.concat(primaryParts, " · "), table.concat(tooltipParts, "\n")
+end
+
+local function buildVitalsStrip(sys, latest)
   if noctalia.getConfig("show_vitals") == false then
     return nil
   end
-  local pills = {}
+
+  local leftLabel, leftTooltip = hostIdentityLabel(sys)
+  local rightPills = {}
 
   if latest.uptime_secs ~= nil then
-    table.insert(pills, ui.label({
-      text = noctalia.tr("panel.vitals_uptime", { uptime = fmt.formatUptime(latest.uptime_secs) }),
-      fontSize = 11,
-      color = "on_surface_variant",
-      maxLines = 1,
+    table.insert(rightPills, ui.row({ gap = 4, align = "center" }, {
+      ui.glyph({ name = "clock", size = 12, color = "on_surface_variant" }),
+      ui.label({
+        text = noctalia.tr("panel.vitals_uptime", { uptime = fmt.formatUptime(latest.uptime_secs) }),
+        fontSize = 11,
+        color = "on_surface_variant",
+        maxLines = 1,
+      }),
     }))
   end
 
@@ -213,7 +287,7 @@ local function buildVitalsStrip(latest)
         l15 = string.format("%.2f", tonumber(latest.load_avg[3]) or 0),
       })
     end
-    table.insert(pills, ui.label({
+    table.insert(rightPills, ui.label({
       text = loadText,
       fontSize = 11,
       color = "on_surface_variant",
@@ -223,7 +297,7 @@ local function buildVitalsStrip(latest)
 
   if latest.temp_max_c ~= nil then
     local tColor = fmt.tempSeverityColor(latest.temp_max_c, "on_surface_variant")
-    table.insert(pills, ui.row({ gap = 3, align = "center" }, {
+    table.insert(rightPills, ui.row({ gap = 3, align = "center" }, {
       ui.glyph({ name = "temperature", size = 12, color = tColor }),
       ui.label({
         text = fmt.formatTemp(latest.temp_max_c),
@@ -236,7 +310,7 @@ local function buildVitalsStrip(latest)
   end
 
   if latest.battery_pct ~= nil then
-    table.insert(pills, ui.row({ gap = 3, align = "center" }, {
+    table.insert(rightPills, ui.row({ gap = 3, align = "center" }, {
       ui.glyph({ name = "battery", size = 12, color = "on_surface_variant" }),
       ui.label({
         text = string.format("%d%%", math.floor((tonumber(latest.battery_pct) or 0) + 0.5)),
@@ -247,19 +321,42 @@ local function buildVitalsStrip(latest)
     }))
   end
 
-  if #pills == 0 then
+  if leftLabel == nil and #rightPills == 0 then
     return nil
   end
 
+  local rowChildren = {}
+  if leftLabel ~= nil then
+    table.insert(rowChildren, ui.row({
+      gap = 6,
+      align = "center",
+      flexGrow = 1,
+      tooltip = leftTooltip,
+    }, {
+      ui.glyph({ name = hostGlyph(sys, latest), size = 13, color = "on_surface_variant" }),
+      ui.label({
+        text = leftLabel,
+        fontSize = 11,
+        color = "on_surface_variant",
+        flexGrow = 1,
+        maxLines = 1,
+      }),
+    }))
+  end
+
+  if #rightPills > 0 then
+    table.insert(rowChildren, ui.row({ gap = 12, align = "center" }, rightPills))
+  end
+
   return ui.row({
-    gap = 14,
+    gap = 12,
     paddingH = 10,
     paddingV = 6,
     radius = 8,
     fill = "surface_container_high",
     align = "center",
-    justify = #pills > 1 and "space_between" or "start",
-  }, pills)
+    justify = "space_between",
+  }, rowChildren)
 end
 
 local function buildCpuSection(samples, latest, warnPct, dangerPct)
@@ -939,7 +1036,7 @@ render = function()
 
   local scrollChildren = {}
 
-  local vitals = buildVitalsStrip(latest)
+  local vitals = buildVitalsStrip(sys, latest)
   if vitals ~= nil then
     table.insert(scrollChildren, vitals)
   end

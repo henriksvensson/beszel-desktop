@@ -35,13 +35,28 @@ pub struct ConnectionStatus {
 }
 
 /// Metadata for a subscribed Beszel system.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SystemSummary {
     pub id: String,
     pub name: String,
     pub status: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_version: Option<String>,
+    /// Human-readable OS / distribution name (e.g. `"Fedora Linux 42"`, `"Ubuntu 24.04"`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub os_name: Option<String>,
+    /// Normalized OS family (`"linux"`, `"macos"`, `"windows"`, `"freebsd"`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub os: Option<String>,
+    /// Kernel release string, when reported by the hub.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kernel: Option<String>,
+    /// CPU model string, when reported by the hub.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cpu_model: Option<String>,
+    /// CPU architecture (e.g. `"amd64"`, `"arm64"`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub arch: Option<String>,
 }
 
 /// Single GPU telemetry snapshot within a `LiveSample`.
@@ -197,6 +212,9 @@ mod tests {
                     name: "workstation".into(),
                     status: "up".into(),
                     agent_version: Some("0.21.2".into()),
+                    os_name: Some("Fedora Linux 42".into()),
+                    os: Some("linux".into()),
+                    ..SystemSummary::default()
                 },
                 history_capacity: 60,
                 samples: vec![LiveSample {
