@@ -8,7 +8,8 @@ Monitor **remote servers, homelab nodes, and other machines** live (~1 Hz) right
 **Beszel Desktop** connects to your [Beszel](https://beszel.dev) hub and streams real-time CPU, memory, and per-core utilization for any number of remote (or local) hosts into compact desktop widgets. Instead of giving every bar widget your Beszel credentials and opening duplicate connections, one lightweight per-user Rust daemon (`beszel-relay`) authenticates with your hub and fans out live updates over a user-only Unix socket to any widget or CLI tool.
 
 <p align="center">
-  <img src="docs/assets/noctalia-panel.gif" alt="Beszel Desktop live telemetry panel in Noctalia Shell showing CPU sparkline, animated 16-core thermal heatmap, and memory usage" width="374">
+  <img src="docs/assets/noctalia-panel.gif" alt="Beszel Desktop live telemetry panel in Noctalia Shell showing CPU sparkline, animated 16-core thermal heatmap, and memory usage" width="330">
+  <img src="docs/assets/dms-popout-dark.png" alt="Beszel Desktop telemetry popout in DankMaterialShell (dark theme)" width="330">
 </p>
 
 ## Highlights

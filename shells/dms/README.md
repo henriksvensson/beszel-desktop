@@ -4,6 +4,11 @@ Tested on Wayland (niri) with DankMaterialShell 2.1.2 and Quickshell 0.3.2.
 
 This widget connects directly to the local `beszel-relay` Unix domain socket (`$XDG_RUNTIME_DIR/beszel-relay.sock`) via `Quickshell.Io` `Socket` + `SplitParser`. Hub credentials stay inside `beszel-relay`.
 
+<p align="center">
+  <img src="../../docs/assets/dms-popout-dark.png" alt="Beszel Desktop DMS popout (dark theme)" width="275">
+  <img src="../../docs/assets/dms-popout-light.png" alt="Beszel Desktop DMS popout (light theme)" width="275">
+</p>
+
 ## Setup
 
 1. Install and start `beszel-relay` (see [packaging/README.md](../../packaging/README.md)).
