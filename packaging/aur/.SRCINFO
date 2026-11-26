@@ -1,6 +1,6 @@
 pkgbase = beszel-desktop
 	pkgdesc = Live Beszel metrics daemon (beszel-relay), CLI (beszel-ctl), and Wayland shell widgets
-	pkgver = 0.3.0
+	pkgver = 0.4.0
 	pkgrel = 1
 	url = https://github.com/henriksvensson/beszel-desktop
 	arch = x86_64
@@ -10,7 +10,7 @@ pkgbase = beszel-desktop
 	depends = glibc
 	depends = gcc-libs
 	options = !lto
-	source = beszel-desktop-0.3.0.tar.gz::https://github.com/henriksvensson/beszel-desktop/archive/refs/tags/v0.3.0.tar.gz
-	sha256sums = 492d504ad17f5955897490260d9680e90f43c3d33adbe1fa850401f891e0905b
+	source = beszel-desktop-0.4.0.tar.gz::https://github.com/henriksvensson/beszel-desktop/archive/refs/tags/v0.4.0.tar.gz
+	sha256sums = 423b0cf0c81f6e06f10984bc1a85d0d9d89d34823e9beece19af669005955fa4
 
 pkgname = beszel-desktop

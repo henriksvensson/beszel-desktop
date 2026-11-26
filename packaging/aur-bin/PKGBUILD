@@ -1,6 +1,6 @@
 # Maintainer: Henrik Svensson <1612710+henriksvensson@users.noreply.github.com>
 pkgname=beszel-desktop-bin
-pkgver=0.3.0
+pkgver=0.4.0
 pkgrel=1
 pkgdesc="Live Beszel metrics daemon (beszel-relay), CLI (beszel-ctl), and Wayland shell widgets (prebuilt binaries)"
 arch=('x86_64' 'aarch64')
@@ -11,8 +11,8 @@ provides=('beszel-desktop')
 conflicts=('beszel-desktop')
 source_x86_64=("${url}/releases/download/v${pkgver}/beszel-desktop-v${pkgver}-x86_64-unknown-linux-gnu.tar.gz")
 source_aarch64=("${url}/releases/download/v${pkgver}/beszel-desktop-v${pkgver}-aarch64-unknown-linux-gnu.tar.gz")
-sha256sums_x86_64=('52315abb2e0687656d674ef37a63ee0c373aab92f9b71b3fe6b6453c5c8538a3')
-sha256sums_aarch64=('1e19ac5ff608ba86be9bc74b92514aec3fe1b8ea61bff4f5ecc8f47c768c21be')
+sha256sums_x86_64=('15ee01b25fc456b9f69eead19826e79c1e537671503eadf80d3687d19ce1b332')
+sha256sums_aarch64=('5fd5439a1b6b93a71ef0a9ef503fbdb12ef5d87010561023a1d431a5f3aba5d6')
 
 package() {
     local target

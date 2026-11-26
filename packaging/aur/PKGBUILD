@@ -1,6 +1,6 @@
 # Maintainer: Henrik Svensson <1612710+henriksvensson@users.noreply.github.com>
 pkgname=beszel-desktop
-pkgver=0.3.0
+pkgver=0.4.0
 pkgrel=1
 pkgdesc="Live Beszel metrics daemon (beszel-relay), CLI (beszel-ctl), and Wayland shell widgets"
 arch=('x86_64' 'aarch64')
@@ -10,7 +10,7 @@ depends=('glibc' 'gcc-libs')
 makedepends=('cargo')
 options=('!lto')
 source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
-sha256sums=('492d504ad17f5955897490260d9680e90f43c3d33adbe1fa850401f891e0905b')
+sha256sums=('423b0cf0c81f6e06f10984bc1a85d0d9d89d34823e9beece19af669005955fa4')
 
 prepare() {
     cd "${pkgname}-${pkgver}"
