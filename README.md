@@ -3,9 +3,9 @@
 [![CI](https://github.com/henriksvensson/beszel-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/henriksvensson/beszel-desktop/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Live (~1 Hz) CPU, memory, and per-core telemetry from a [Beszel](https://beszel.dev) hub, brought directly into Linux Wayland desktop bars without recreating the full web dashboard.
+Monitor **remote servers, homelab nodes, and other machines** live (~1 Hz) right from your Linux Wayland desktop bar — without keeping a browser tab open to a monitoring dashboard.
 
-Instead of giving every bar widget your Beszel credentials and opening duplicate connections, **Beszel Desktop** runs one lightweight per-user Rust daemon (`beszel-relay`) that authenticates with your hub and fans out live updates over a user-only Unix socket to any number of widgets or CLI tools.
+**Beszel Desktop** connects to your [Beszel](https://beszel.dev) hub and streams real-time CPU, memory, and per-core utilization for any number of remote (or local) hosts into compact desktop widgets. Instead of giving every bar widget your Beszel credentials and opening duplicate connections, one lightweight per-user Rust daemon (`beszel-relay`) authenticates with your hub and fans out live updates over a user-only Unix socket to any widget or CLI tool.
 
 <p align="center">
   <img src="docs/assets/noctalia-panel.gif" alt="Beszel Desktop live telemetry panel in Noctalia Shell showing CPU sparkline, animated 16-core thermal heatmap, and memory usage" width="374">
@@ -13,9 +13,9 @@ Instead of giving every bar widget your Beszel credentials and opening duplicate
 
 ## Highlights
 
+- **Remote multi-host monitoring in your bar:** Keep an eye on build servers, VPSes, homelab nodes, or workstations side by side at ~1 Hz. Watches Beszel's `systems/*` collection live so hosts coming online or going offline update automatically.
 - **Slim, jitter-free bar pills:** Compact `<host>` + CPU/RAM icons with fixed-width zero-padded percentages (`00%`–`99%`) and smooth severity coloring (amber warning, red danger).
-- **Real-time popout telemetry:** Hover-scrubbable CPU & memory area sparklines with outage gap breaks and an animated per-core CPU heatmap.
-- **Multi-host out of the box:** Watches Beszel's `systems/*` collection live so hosts coming online or going offline update automatically; place independent bar widgets per host.
+- **Real-time popout telemetry:** Switch between remote hosts in one click to inspect hover-scrubbable CPU & memory sparklines (with outage gap breaks) and an animated per-core CPU heatmap.
 - **Credentials never touch widgets:** Passwords stay inside `beszel-relay`, encrypted at rest via `systemd-creds` (TPM2 + host key when available). Widgets read only from a `0600` Unix socket under `$XDG_RUNTIME_DIR`.
 - **Laptop & server friendly:** Automatically pauses upstream `rt_metrics` polling when no widgets are connected (e.g., locked/closed shell) and detects wake-from-sleep clock jumps for instant reconnects.
 

@@ -8,7 +8,7 @@
     "repo": "https://github.com/henriksvensson/beszel-desktop",
     "path": "shells/dms",
     "author": "henriksvensson",
-    "description": "Live (~1 Hz) Beszel CPU, memory, and per-core CPU heatmap streamed from the local beszel-relay daemon over a Unix socket, with multi-host variants and one-click host discovery.",
+    "description": "Monitor remote servers and homelab hosts live (~1 Hz CPU, memory, and per-core heatmap) from a Beszel hub via the local beszel-relay daemon, with multi-host variants and one-click host discovery.",
     "dependencies": [
         "beszel-relay"
     ],

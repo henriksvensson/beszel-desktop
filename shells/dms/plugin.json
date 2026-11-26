@@ -1,7 +1,7 @@
 {
   "id": "beszelDesktop",
   "name": "Beszel Desktop",
-  "description": "Live Beszel CPU and memory metrics streamed from the local beszel-relay daemon",
+  "description": "Monitor remote servers and homelab hosts live (~1 Hz CPU, memory, per-core heatmap) from a Beszel hub via beszel-relay",
   "version": "0.1.0",
   "author": "henriksvensson",
   "license": "MIT",
