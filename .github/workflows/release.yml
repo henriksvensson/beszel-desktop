@@ -20,8 +20,12 @@ jobs:
         include:
           - runner: ubuntu-latest
             target: x86_64-unknown-linux-gnu
+            nfpm_arch: amd64
+            rpm_arch: x86_64
           - runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
+            nfpm_arch: arm64
+            rpm_arch: aarch64
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -29,21 +33,51 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Build release binaries
         run: cargo build --release --locked --workspace
-      - name: Package release archive
+      - name: Install nfpm
+        env:
+          NFPM_ARCH: ${{ matrix.nfpm_arch }}
+        run: |
+          NFPM_VER="2.45.0"
+          ARCH_NAME=$([ "$NFPM_ARCH" = "amd64" ] && echo "x86_64" || echo "arm64")
+          curl -fsSL "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VER}/nfpm_${NFPM_VER}_Linux_${ARCH_NAME}.tar.gz" \
+            | tar -xz -C /usr/local/bin nfpm
+          nfpm --version
+      - name: Package release archive, .deb, and .rpm
         env:
           TARGET: ${{ matrix.target }}
+          NFPM_ARCH: ${{ matrix.nfpm_arch }}
+          RPM_ARCH: ${{ matrix.rpm_arch }}
         run: |
           TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          if [ "$TAG" = "main" ] || [ -z "$VERSION" ]; then
+            VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n 1)"
+            TAG="v${VERSION}"
+          fi
           PKG="beszel-desktop-${TAG}-${TARGET}"
           mkdir -p "dist/${PKG}"
           cp target/release/beszel-relay target/release/beszel-ctl "dist/${PKG}/"
           cp packaging/systemd/beszel-relay.service packaging/config.example.toml LICENSE README.md "dist/${PKG}/"
           tar -C dist -czf "dist/${PKG}.tar.gz" "${PKG}"
           rm -rf "dist/${PKG}"
+
+          sed 's|%h/.local/bin/beszel-relay|/usr/bin/beszel-relay|g' \
+            packaging/systemd/beszel-relay.service \
+            > dist/beszel-relay.pkg.service
+
+          export NFPM_VERSION="${VERSION}"
+          nfpm package --config packaging/nfpm.yaml --packager deb \
+            --target "dist/beszel-desktop_${VERSION}_${NFPM_ARCH}.deb"
+          nfpm package --config packaging/nfpm.yaml --packager rpm \
+            --target "dist/beszel-desktop-${VERSION}-1.${RPM_ARCH}.rpm"
+          rm -f dist/beszel-relay.pkg.service
       - uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.target }}
-          path: dist/*.tar.gz
+          path: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/*.rpm
 
   package-shells:
     runs-on: ubuntu-latest
@@ -72,11 +106,13 @@ jobs:
           merge-multiple: true
       - name: Generate SHA256SUMS
         working-directory: dist
-        run: sha256sum *.tar.gz > SHA256SUMS
+        run: sha256sum *.tar.gz *.deb *.rpm > SHA256SUMS
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           files: |
             dist/*.tar.gz
+            dist/*.deb
+            dist/*.rpm
             dist/SHA256SUMS

@@ -45,7 +45,9 @@ curl -fsSL https://raw.githubusercontent.com/henriksvensson/beszel-desktop/main/
 
 Prefer to install via a package manager or from source?
 
+- **Homebrew (Linux):** `brew install henriksvensson/tap/beszel-desktop && beszel-ctl init`
 - **Nix:** `nix profile install github:henriksvensson/beszel-desktop && beszel-ctl init`
+- **Debian / Ubuntu (`.deb`) & Fedora / openSUSE (`.rpm`):** Download from [GitHub Releases](https://github.com/henriksvensson/beszel-desktop/releases), install with `apt`/`dnf`, then run `beszel-ctl init`
 - **From source:**
   ```sh
   git clone https://github.com/henriksvensson/beszel-desktop.git

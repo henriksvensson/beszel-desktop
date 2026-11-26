@@ -1,0 +1,45 @@
+name: beszel-desktop
+arch: "${NFPM_ARCH}"
+platform: linux
+version: "${NFPM_VERSION}"
+section: utils
+priority: optional
+maintainer: "Henrik Svensson <1612710+henriksvensson@users.noreply.github.com>"
+description: |
+  Monitor remote servers and homelab hosts live in your Linux desktop bar via Beszel.
+  Includes the beszel-relay per-user daemon, beszel-ctl CLI, systemd user unit,
+  and desktop shell integrations for Noctalia Shell v5, DankMaterialShell, and Waybar.
+homepage: https://github.com/henriksvensson/beszel-desktop
+license: MIT
+
+contents:
+  - src: target/release/beszel-relay
+    dst: /usr/bin/beszel-relay
+    file_info:
+      mode: 0755
+  - src: target/release/beszel-ctl
+    dst: /usr/bin/beszel-ctl
+    file_info:
+      mode: 0755
+  - src: dist/beszel-relay.pkg.service
+    dst: /usr/lib/systemd/user/beszel-relay.service
+    file_info:
+      mode: 0644
+  - src: packaging/config.example.toml
+    dst: /usr/share/doc/beszel-desktop/config.example.toml
+    file_info:
+      mode: 0644
+  - src: README.md
+    dst: /usr/share/doc/beszel-desktop/README.md
+    file_info:
+      mode: 0644
+  - src: LICENSE
+    dst: /usr/share/licenses/beszel-desktop/LICENSE
+    file_info:
+      mode: 0644
+  - src: shells/dms
+    dst: /usr/share/beszel-desktop/shells/dms
+  - src: shells/noctalia
+    dst: /usr/share/beszel-desktop/shells/noctalia
+  - src: shells/waybar
+    dst: /usr/share/beszel-desktop/shells/waybar
