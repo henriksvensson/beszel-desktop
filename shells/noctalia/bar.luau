@@ -135,6 +135,7 @@ local function barPill(glyphName, text, width, color)
     ui.label({
       text = text,
       width = width,
+      maxWidth = width,
       textAlign = "end",
       color = color,
       maxLines = 1,
@@ -151,15 +152,15 @@ local function appendNetworkItems(items, latest, networkMode, color)
 
   if networkMode == "split" then
     table.insert(items, ui.row({ gap = 5, align = "center" }, {
-      barPill("arrow-down", fmt.formatCompactRate(recv), 36, color),
-      barPill("arrow-up", fmt.formatCompactRate(sent), 36, color),
+      barPill("arrow-down", fmt.formatCompactRate(recv), 48, color),
+      barPill("arrow-up", fmt.formatCompactRate(sent), 48, color),
     }))
   elseif networkMode == "combined" then
-    table.insert(items, barPill("arrows-up-down", fmt.formatCompactRate(recv + sent), 38, color))
+    table.insert(items, barPill("arrows-up-down", fmt.formatCompactRate(recv + sent), 48, color))
   elseif networkMode == "download" then
-    table.insert(items, barPill("arrow-down", fmt.formatCompactRate(recv), 36, color))
+    table.insert(items, barPill("arrow-down", fmt.formatCompactRate(recv), 48, color))
   elseif networkMode == "upload" then
-    table.insert(items, barPill("arrow-up", fmt.formatCompactRate(sent), 36, color))
+    table.insert(items, barPill("arrow-up", fmt.formatCompactRate(sent), 48, color))
   end
 end
 
@@ -319,7 +320,7 @@ local function render()
     local pct = tonumber(latest.cpu_pct) or 0
     table.insert(
       items,
-      barPill("cpu-usage", fmt.padPercent(pct), 30, metricColor(state, statusColor, pct, warnPct, dangerPct))
+      barPill("cpu-usage", fmt.padPercent(pct), 34, metricColor(state, statusColor, pct, warnPct, dangerPct))
     )
   end
 
@@ -327,7 +328,7 @@ local function render()
     local pct = tonumber(latest.mem_pct) or 0
     table.insert(
       items,
-      barPill("memory", fmt.padPercent(pct), 30, metricColor(state, statusColor, pct, warnPct, dangerPct))
+      barPill("memory", fmt.padPercent(pct), 34, metricColor(state, statusColor, pct, warnPct, dangerPct))
     )
   end
 
@@ -337,7 +338,7 @@ local function render()
       local pct = tonumber(gpu.usage_pct) or 0
       table.insert(
         items,
-        barPill("cpu-2", fmt.padPercent(pct), 30, metricColor(state, statusColor, pct, warnPct, dangerPct))
+        barPill("cpu-2", fmt.padPercent(pct), 34, metricColor(state, statusColor, pct, warnPct, dangerPct))
       )
     end
   end
@@ -346,14 +347,14 @@ local function render()
     local tempColor = state == "connected"
       and fmt.tempSeverityColor(latest.temp_max_c, "on_surface")
       or statusColor
-    table.insert(items, barPill("temperature", fmt.formatTemp(latest.temp_max_c), 34, tempColor))
+    table.insert(items, barPill("temperature", fmt.formatTemp(latest.temp_max_c), 38, tempColor))
   end
 
   if opts.showDisk and latest.disk_pct ~= nil then
     local pct = tonumber(latest.disk_pct) or 0
     table.insert(
       items,
-      barPill("database", fmt.padPercent(pct), 30, metricColor(state, statusColor, pct, warnPct, dangerPct))
+      barPill("database", fmt.padPercent(pct), 34, metricColor(state, statusColor, pct, warnPct, dangerPct))
     )
   end
 

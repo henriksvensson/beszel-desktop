@@ -1,6 +1,6 @@
 --!nonstrict
 -- Beszel Desktop live telemetry panel.
--- Focused per-host dashboard: vitals strip, 2-column balanced grid of hover-scrubbable
+-- Focused per-host dashboard: vitals strip, aligned 2-column grid of hover-scrubbable
 -- CPU, memory, GPU, and dual-series network traces, per-core CPU heatmap, disk/pool
 -- health, and optional top containers, inside a scrollable viewport.
 
@@ -8,7 +8,11 @@ local fmt = require("./lib/format.luau")
 
 local STATE_KEY = "beszel.data"
 local SELECTED_HOST_KEY = "beszel.selected_host"
-local CORE_BAR_HEIGHT = 22
+local HEADER_ROW_HEIGHT = 22
+local GRAPH_CARD_HEIGHT = 92
+local FULL_GRAPH_HEIGHT = 80
+local FOOTER_GRAPH_HEIGHT = 62
+local FOOTER_ROW_HEIGHT = 14
 local NET_SCALE_FLOOR_BPS = 10 * 1024
 local MAX_CONTAINERS_SHOWN = 5
 local INSTALL_COMMAND =
@@ -69,6 +73,16 @@ local function coreColumnCount(count)
     return 12
   end
   return 16
+end
+
+local function coreBarHeight(rowCount)
+  if rowCount <= 1 then
+    return 76
+  end
+  if rowCount == 2 then
+    return 36
+  end
+  return 22
 end
 
 local function extractSeries(samples, field)
@@ -146,6 +160,25 @@ local function syncTargetCores(latest)
       animatedCores[i] = val
     end
   end
+end
+
+local function cardHeader(titleText, rightNode)
+  return ui.row({
+    height = HEADER_ROW_HEIGHT,
+    align = "center",
+    justify = "space_between",
+    gap = 6,
+  }, {
+    ui.label({
+      text = titleText,
+      fontSize = 13,
+      fontWeight = "medium",
+      color = "on_surface",
+      flexGrow = 1,
+      maxLines = 1,
+    }),
+    rightNode,
+  })
 end
 
 local function buildVitalsStrip(latest)
@@ -234,29 +267,25 @@ local function buildCpuSection(samples, latest, warnPct, dangerPct)
   local cpuPct = tonumber(cpuSample.cpu_pct) or 0
   local cpuColor = fmt.severityColor(cpuPct, "primary", warnPct, dangerPct)
 
-  return ui.column({ gap = 6 }, {
-    ui.row({ align = "center", justify = "space_between" }, {
-      ui.label({
-        text = noctalia.tr("panel.cpu"),
-        fontSize = 13,
-        fontWeight = "medium",
-        color = "on_surface",
-      }),
+  return ui.column({ gap = 6, flexGrow = 1 }, {
+    cardHeader(
+      noctalia.tr("panel.cpu"),
       ui.label({
         text = string.format("%.1f%%", cpuPct),
-        fontSize = 16,
+        fontSize = 15,
         fontWeight = "semibold",
         color = cpuColor,
-      }),
-    }),
+      })
+    ),
     ui.column({
+      height = GRAPH_CARD_HEIGHT,
       padding = 6,
       radius = 8,
       fill = "surface_container_high",
     }, {
       ui.graph({
         key = "cpu-graph",
-        height = 68,
+        height = FULL_GRAPH_HEIGHT,
         values = extractSeries(samples, "cpu_pct"),
         color = cpuColor,
         lineWidth = 2,
@@ -298,6 +327,8 @@ local function buildCoreHeatmap(warnPct, dangerPct)
   end
 
   local cols = coreColumnCount(count)
+  local rowCount = math.ceil(count / cols)
+  local barHeight = coreBarHeight(rowCount)
   local gridRows = {}
   local idx = 1
   while idx <= count do
@@ -308,7 +339,7 @@ local function buildCoreHeatmap(warnPct, dangerPct)
         local shownVal = animatedCores[coreIdx] or targetCores[coreIdx] or 0
         local actualVal = math.floor((targetCores[coreIdx] or 0) + 0.5)
         local fillHeight = shownVal > 0.5
-          and math.max(3, math.floor((shownVal / 100.0) * CORE_BAR_HEIGHT + 0.5))
+          and math.max(3, math.floor((shownVal / 100.0) * barHeight + 0.5))
           or 0
         local isHovered = hoveredCoreIndex == coreIdx
 
@@ -324,7 +355,7 @@ local function buildCoreHeatmap(warnPct, dangerPct)
         table.insert(cells, ui.column({
           key = "core-" .. tostring(coreIdx),
           flexGrow = 1,
-          height = CORE_BAR_HEIGHT,
+          height = barHeight,
           justify = "end",
           radius = 3,
           fill = "surface_container_highest",
@@ -345,28 +376,24 @@ local function buildCoreHeatmap(warnPct, dangerPct)
     table.insert(gridRows, ui.row({ gap = 4 }, cells))
   end
 
-  local estHeight = 46 + (#gridRows * (CORE_BAR_HEIGHT + 4))
-  return ui.column({ gap = 6 }, {
-    ui.row({ align = "center", justify = "space_between" }, {
-      ui.label({
-        text = noctalia.tr("panel.cores"),
-        fontSize = 13,
-        fontWeight = "medium",
-        color = "on_surface",
-      }),
+  return ui.column({ gap = 6, flexGrow = 1 }, {
+    cardHeader(
+      noctalia.tr("panel.cores"),
       ui.label({
         text = metaText,
         fontSize = 11,
         color = hoveredCoreIndex ~= nil and "on_surface" or "on_surface_variant",
-      }),
-    }),
+      })
+    ),
     ui.column({
+      minHeight = GRAPH_CARD_HEIGHT,
       gap = 4,
       padding = 8,
       radius = 8,
       fill = "surface_container_high",
+      justify = "center",
     }, gridRows),
-  }), estHeight
+  })
 end
 
 local function buildMemorySection(samples, latest, warnPct, dangerPct)
@@ -388,15 +415,20 @@ local function buildMemorySection(samples, latest, warnPct, dangerPct)
   end
   table.insert(memReadoutChildren, ui.label({
     text = string.format("%.1f%%", memPct),
-    fontSize = 16,
+    fontSize = 15,
     fontWeight = "semibold",
     color = memColor,
   }))
 
+  local swapUsed = tonumber(memSample.swap_used_bytes) or 0
+  local showSwapRow = noctalia.getConfig("show_swap") ~= false
+    and swapUsed > 0
+    and memSample.swap_total_bytes ~= nil
+
   local memCardChildren = {
     ui.graph({
       key = "mem-graph",
-      height = 68,
+      height = showSwapRow and FOOTER_GRAPH_HEIGHT or FULL_GRAPH_HEIGHT,
       values = extractSeries(samples, "mem_pct"),
       color = memColor,
       lineWidth = 2,
@@ -406,11 +438,12 @@ local function buildMemorySection(samples, latest, warnPct, dangerPct)
     }),
   }
 
-  local estHeight = 104
-  local swapUsed = tonumber(memSample.swap_used_bytes) or 0
-  if noctalia.getConfig("show_swap") ~= false and swapUsed > 0 and memSample.swap_total_bytes ~= nil then
-    estHeight += 18
-    table.insert(memCardChildren, ui.row({ align = "center", justify = "space_between" }, {
+  if showSwapRow then
+    table.insert(memCardChildren, ui.row({
+      height = FOOTER_ROW_HEIGHT,
+      align = "center",
+      justify = "space_between",
+    }, {
       ui.label({
         text = noctalia.tr("panel.swap"),
         fontSize = 10,
@@ -428,23 +461,19 @@ local function buildMemorySection(samples, latest, warnPct, dangerPct)
     }))
   end
 
-  return ui.column({ gap = 6 }, {
-    ui.row({ align = "center", justify = "space_between", gap = 6 }, {
-      ui.label({
-        text = noctalia.tr("panel.memory"),
-        fontSize = 13,
-        fontWeight = "medium",
-        color = "on_surface",
-      }),
-      ui.row({ gap = 6, align = "center" }, memReadoutChildren),
-    }),
+  return ui.column({ gap = 6, flexGrow = 1 }, {
+    cardHeader(
+      noctalia.tr("panel.memory"),
+      ui.row({ gap = 6, align = "center" }, memReadoutChildren)
+    ),
     ui.column({
+      height = GRAPH_CARD_HEIGHT,
       gap = 4,
       padding = 6,
       radius = 8,
       fill = "surface_container_high",
     }, memCardChildren),
-  }), estHeight
+  })
 end
 
 local function buildGpuSection(samples, latest, warnPct, dangerPct)
@@ -483,7 +512,7 @@ local function buildGpuSection(samples, latest, warnPct, dangerPct)
   end
   table.insert(rightChildren, ui.label({
     text = string.format("%.0f%%", gpuPct),
-    fontSize = 16,
+    fontSize = 15,
     fontWeight = "semibold",
     color = gpuColor,
   }))
@@ -492,26 +521,17 @@ local function buildGpuSection(samples, latest, warnPct, dangerPct)
     and gpu.name
     or noctalia.tr("panel.gpu")
 
-  return ui.column({ gap = 6 }, {
-    ui.row({ align = "center", justify = "space_between", gap = 8 }, {
-      ui.label({
-        text = title,
-        fontSize = 13,
-        fontWeight = "medium",
-        color = "on_surface",
-        flexGrow = 1,
-        maxLines = 1,
-      }),
-      ui.row({ gap = 6, align = "center" }, rightChildren),
-    }),
+  return ui.column({ gap = 6, flexGrow = 1 }, {
+    cardHeader(title, ui.row({ gap = 6, align = "center" }, rightChildren)),
     ui.column({
+      height = GRAPH_CARD_HEIGHT,
       padding = 6,
       radius = 8,
       fill = "surface_container_high",
     }, {
       ui.graph({
         key = "gpu-graph",
-        height = 60,
+        height = FULL_GRAPH_HEIGHT,
         values = extractGpuSeries(samples),
         color = gpuColor,
         lineWidth = 2,
@@ -520,7 +540,7 @@ local function buildGpuSection(samples, latest, warnPct, dangerPct)
         onPointerLeave = "onGpuGraphLeave",
       }),
     }),
-  }), 96
+  })
 end
 
 local function buildNetworkSection(samples, latest)
@@ -536,18 +556,13 @@ local function buildNetworkSection(samples, latest)
   local recvBps = tonumber(sample.net_recv_bps) or 0
   local sentBps = tonumber(sample.net_sent_bps) or 0
 
-  -- Use distinct high-contrast palette roles: primary (download) vs tertiary (upload).
+  -- Distinct high-contrast palette roles: primary (download) vs tertiary (upload).
   local dlColor = "primary"
   local ulColor = "tertiary"
 
-  return ui.column({ gap = 6 }, {
-    ui.row({ align = "center", justify = "space_between", gap = 6 }, {
-      ui.label({
-        text = noctalia.tr("panel.network"),
-        fontSize = 13,
-        fontWeight = "medium",
-        color = "on_surface",
-      }),
+  return ui.column({ gap = 6, flexGrow = 1 }, {
+    cardHeader(
+      noctalia.tr("panel.network"),
       ui.row({ gap = 8, align = "center" }, {
         ui.row({ gap = 2, align = "center" }, {
           ui.glyph({ name = "arrow-down", size = 12, color = dlColor }),
@@ -569,17 +584,18 @@ local function buildNetworkSection(samples, latest)
             maxLines = 1,
           }),
         }),
-      }),
-    }),
+      })
+    ),
     ui.column({
-      gap = 5,
+      height = GRAPH_CARD_HEIGHT,
+      gap = 4,
       padding = 6,
       radius = 8,
       fill = "surface_container_high",
     }, {
       ui.graph({
         key = "net-graph",
-        height = 60,
+        height = FOOTER_GRAPH_HEIGHT,
         values = recvSeries,
         values2 = sentSeries,
         color = dlColor,
@@ -589,7 +605,11 @@ local function buildNetworkSection(samples, latest)
         onPointerMove = "onNetGraphMove",
         onPointerLeave = "onNetGraphLeave",
       }),
-      ui.row({ align = "center", justify = "space_between" }, {
+      ui.row({
+        height = FOOTER_ROW_HEIGHT,
+        align = "center",
+        justify = "space_between",
+      }, {
         ui.row({ gap = 10, align = "center" }, {
           ui.row({ gap = 4, align = "center" }, {
             ui.box({ width = 7, height = 7, radius = 4, fill = dlColor }),
@@ -615,7 +635,7 @@ local function buildNetworkSection(samples, latest)
         }),
       }),
     }),
-  }), 112
+  })
 end
 
 local function buildDiskSection(latest, warnPct, dangerPct)
@@ -631,7 +651,6 @@ local function buildDiskSection(latest, warnPct, dangerPct)
 
   local headerRight = {}
   local cardChildren = {}
-  local estHeight = 56
 
   if hasDiskPct then
     local pct = tonumber(latest.disk_pct) or 0
@@ -660,10 +679,11 @@ local function buildDiskSection(latest, warnPct, dangerPct)
       height = 6,
       radius = 3,
     }))
-    estHeight += 14
   end
 
-  if hasDiskIo then
+  -- Always keep the Disk I/O row present when disk stats exist so zero-I/O ticks
+  -- never pop the row in/out and resize the panel.
+  if hasDiskPct or hasDiskIo then
     table.insert(cardChildren, ui.row({ align = "center", justify = "space_between" }, {
       ui.label({
         text = noctalia.tr("panel.disk_io"),
@@ -679,7 +699,6 @@ local function buildDiskSection(latest, warnPct, dangerPct)
         color = "on_surface",
       }),
     }))
-    estHeight += 22
   end
 
   if #unhealthy > 0 then
@@ -700,26 +719,17 @@ local function buildDiskSection(latest, warnPct, dangerPct)
         maxLines = 2,
       }),
     }))
-    estHeight += 36
   end
 
-  return ui.column({ gap = 6 }, {
-    ui.row({ align = "center", justify = "space_between" }, {
-      ui.label({
-        text = noctalia.tr("panel.disk"),
-        fontSize = 13,
-        fontWeight = "medium",
-        color = "on_surface",
-      }),
-      ui.row({ gap = 6, align = "center" }, headerRight),
-    }),
+  return ui.column({ gap = 6, flexGrow = 1 }, {
+    cardHeader(noctalia.tr("panel.disk"), ui.row({ gap = 6, align = "center" }, headerRight)),
     ui.column({
       gap = 8,
       padding = 10,
       radius = 8,
       fill = "surface_container_high",
     }, cardChildren),
-  }), estHeight
+  })
 end
 
 local function buildContainersSection(latest)
@@ -767,28 +777,22 @@ local function buildContainersSection(latest)
     }))
   end
 
-  local estHeight = 52 + (limit * 20)
-  return ui.column({ gap = 6 }, {
-    ui.row({ align = "center", justify = "space_between" }, {
-      ui.label({
-        text = noctalia.tr("panel.containers"),
-        fontSize = 13,
-        fontWeight = "medium",
-        color = "on_surface",
-      }),
+  return ui.column({ gap = 6, flexGrow = 1 }, {
+    cardHeader(
+      noctalia.tr("panel.containers"),
       ui.label({
         text = noctalia.tr("panel.containers_count", { count = tostring(#latest.containers) }),
         fontSize = 11,
         color = "on_surface_variant",
-      }),
-    }),
+      })
+    ),
     ui.column({
       gap = 6,
       padding = 10,
       radius = 8,
       fill = "surface_container_high",
     }, rows),
-  }), estHeight
+  })
 end
 
 local function buildOnboardingCard(state)
@@ -940,47 +944,33 @@ render = function()
     table.insert(scrollChildren, vitals)
   end
 
-  -- Two balanced columns: CPU pinned top-left, Memory pinned top-right, remaining
-  -- sections placed into whichever column is currently shorter.
-  local leftCol = { buildCpuSection(samples, latest, warnPct, dangerPct) }
-  local leftHeight = 104
-
-  local memNode, memHeight = buildMemorySection(samples, latest, warnPct, dangerPct)
-  local rightCol = { memNode }
-  local rightHeight = memHeight
-
-  local extras = {}
-  local function addExtra(node, height)
+  -- Ordered 2-column grid rows so left and right cards share exact row baselines.
+  local cards = {
+    buildCpuSection(samples, latest, warnPct, dangerPct),
+    buildMemorySection(samples, latest, warnPct, dangerPct),
+  }
+  local function addCard(node)
     if node ~= nil then
-      table.insert(extras, { node = node, height = height or 96 })
+      table.insert(cards, node)
     end
   end
 
-  local heatmapNode, heatmapHeight = buildCoreHeatmap(warnPct, dangerPct)
-  addExtra(heatmapNode, heatmapHeight)
-  local netNode, netHeight = buildNetworkSection(samples, latest)
-  addExtra(netNode, netHeight)
-  local gpuNode, gpuHeight = buildGpuSection(samples, latest, warnPct, dangerPct)
-  addExtra(gpuNode, gpuHeight)
-  local diskNode, diskHeight = buildDiskSection(latest, warnPct, dangerPct)
-  addExtra(diskNode, diskHeight)
-  local ctrNode, ctrHeight = buildContainersSection(latest)
-  addExtra(ctrNode, ctrHeight)
+  addCard(buildCoreHeatmap(warnPct, dangerPct))
+  addCard(buildNetworkSection(samples, latest))
+  addCard(buildGpuSection(samples, latest, warnPct, dangerPct))
+  addCard(buildDiskSection(latest, warnPct, dangerPct))
+  addCard(buildContainersSection(latest))
 
-  for _, item in ipairs(extras) do
-    if leftHeight <= rightHeight then
-      table.insert(leftCol, item.node)
-      leftHeight += item.height + 12
-    else
-      table.insert(rightCol, item.node)
-      rightHeight += item.height + 12
-    end
+  local i = 1
+  while i <= #cards do
+    local leftCard = cards[i]
+    local rightCard = cards[i + 1] or ui.spacer({ flexGrow = 1 })
+    table.insert(scrollChildren, ui.row({ gap = 14, align = "start" }, {
+      leftCard,
+      rightCard,
+    }))
+    i += 2
   end
-
-  table.insert(scrollChildren, ui.row({ gap = 14, align = "start" }, {
-    ui.column({ gap = 12, flexGrow = 1 }, leftCol),
-    ui.column({ gap = 12, flexGrow = 1 }, rightCol),
-  }))
 
   panel.render(ui.column({ flexGrow = 1, gap = 12 }, {
     header,
