@@ -1,0 +1,22 @@
+{
+    "id": "beszelDesktop",
+    "name": "Beszel Desktop",
+    "capabilities": [
+        "dankbar-widget"
+    ],
+    "category": "monitoring",
+    "repo": "https://github.com/henriksvensson/beszel-desktop",
+    "path": "shells/dms",
+    "author": "henriksvensson",
+    "description": "Live (~1 Hz) Beszel CPU, memory, and per-core CPU heatmap streamed from the local beszel-relay daemon over a Unix socket, with multi-host variants and one-click host discovery.",
+    "dependencies": [
+        "beszel-relay"
+    ],
+    "compositors": [
+        "any"
+    ],
+    "distro": [
+        "any"
+    ],
+    "screenshot": "https://raw.githubusercontent.com/henriksvensson/beszel-desktop/main/docs/assets/dms-popout.png"
+}

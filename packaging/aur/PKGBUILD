@@ -1,0 +1,50 @@
+# Maintainer: Henrik Svensson <1612710+henriksvensson@users.noreply.github.com>
+pkgname=beszel-desktop
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Live Beszel metrics daemon (beszel-relay), CLI (beszel-ctl), and Wayland shell widgets"
+arch=('x86_64' 'aarch64')
+url="https://github.com/henriksvensson/beszel-desktop"
+license=('MIT')
+depends=('glibc' 'gcc-libs')
+makedepends=('cargo')
+source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
+sha256sums=('8a4c8888aa68715b9b24a2175b4fb1acfe738bed061e131da57b5164e3c81fda')
+
+prepare() {
+    cd "${pkgname}-${pkgver}"
+    export RUSTUP_TOOLCHAIN=stable
+    cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+    cd "${pkgname}-${pkgver}"
+    export RUSTUP_TOOLCHAIN=stable
+    export CARGO_TARGET_DIR=target
+    cargo build --frozen --release --workspace
+}
+
+check() {
+    cd "${pkgname}-${pkgver}"
+    export RUSTUP_TOOLCHAIN=stable
+    export CARGO_TARGET_DIR=target
+    cargo test --frozen --workspace
+}
+
+package() {
+    cd "${pkgname}-${pkgver}"
+    install -Dm755 target/release/beszel-relay "${pkgdir}/usr/bin/beszel-relay"
+    install -Dm755 target/release/beszel-ctl "${pkgdir}/usr/bin/beszel-ctl"
+
+    install -dm755 "${pkgdir}/usr/lib/systemd/user"
+    sed 's|%h/.local/bin/beszel-relay|/usr/bin/beszel-relay|g' \
+        packaging/systemd/beszel-relay.service \
+        > "${pkgdir}/usr/lib/systemd/user/beszel-relay.service"
+
+    install -Dm644 packaging/config.example.toml "${pkgdir}/usr/share/doc/${pkgname}/config.example.toml"
+    install -Dm644 README.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
+    install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+
+    install -dm755 "${pkgdir}/usr/share/${pkgname}/shells"
+    cp -r shells/dms shells/noctalia shells/waybar "${pkgdir}/usr/share/${pkgname}/shells/"
+}
