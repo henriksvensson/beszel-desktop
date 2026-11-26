@@ -3,14 +3,13 @@
 -- Supports multiple independent host instances via per-widget `system` setting,
 -- per-widget metric toggles (CPU, memory, GPU, temp, disk, split/combined network),
 -- monochrome icons in normal state (colored only on warning/danger), and
--- scroll-to-switch across discovered hosts.
+-- scroll-to-switch when unpinned.
 
 local fmt = require("./lib/format.luau")
 
 local PANEL_ID = "henriksvensson/beszel-desktop:panel"
 local STATE_KEY = "beszel.data"
 local SELECTED_HOST_KEY = "beszel.selected_host"
-local OPENED_SOURCE_KEY = "beszel.opened_source"
 
 local data = noctalia.state.get(STATE_KEY)
 local sessionHostId = nil
@@ -46,14 +45,15 @@ local function buildTooltip(sys, latest, state, filter)
       value = string.format("%.1f%%", tonumber(latest.cpu_pct) or 0),
     })
 
-    local memText = string.format("%.1f%%", tonumber(latest.mem_pct) or 0)
+    local memText
     if latest.mem_used_bytes ~= nil and latest.mem_total_bytes ~= nil then
       memText = string.format(
-        "%s (%s / %s GiB)",
-        memText,
-        fmt.formatGiB(latest.mem_used_bytes),
-        fmt.formatGiB(latest.mem_total_bytes)
+        "%.0f%% (%s)",
+        tonumber(latest.mem_pct) or 0,
+        fmt.formatGiBCompact(latest.mem_used_bytes, latest.mem_total_bytes)
       )
+    else
+      memText = string.format("%.1f%%", tonumber(latest.mem_pct) or 0)
     end
     table.insert(rows, { key = noctalia.tr("tooltip.memory"), value = memText })
 
@@ -114,18 +114,6 @@ local function buildTooltip(sys, latest, state, filter)
           "↓ %s  ↑ %s",
           fmt.formatRate(latest.net_recv_bps or 0),
           fmt.formatRate(latest.net_sent_bps or 0)
-        ),
-      })
-    end
-
-    if type(latest.load_avg) == "table" and #latest.load_avg >= 3 then
-      table.insert(rows, {
-        key = noctalia.tr("tooltip.load"),
-        value = string.format(
-          "%.2f  %.2f  %.2f",
-          tonumber(latest.load_avg[1]) or 0,
-          tonumber(latest.load_avg[2]) or 0,
-          tonumber(latest.load_avg[3]) or 0
         ),
       })
     end
@@ -409,11 +397,15 @@ function onScroll(axis, steps, startsGesture)
   if axis ~= "vertical" or not startsGesture then
     return
   end
+  -- Only allow scroll-to-switch on unpinned bar widgets.
+  local filter = noctalia.string.trim(noctalia.getConfig("system") or "")
+  if filter ~= "" then
+    return
+  end
   local systems = type(data) == "table" and data.systems or {}
   if #systems < 2 then
     return
   end
-  local filter = noctalia.getConfig("system") or ""
   local current = resolveDisplayedSystem(systems, filter)
   local currentIndex = 1
   if current ~= nil then
@@ -437,10 +429,6 @@ function onClick()
   if sys ~= nil then
     noctalia.state.set(SELECTED_HOST_KEY, sys.id)
   end
-  noctalia.state.set(OPENED_SOURCE_KEY, {
-    configuredFilter = filter,
-    displayedHostId = sys ~= nil and sys.id or nil,
-  })
   noctalia.togglePanel(PANEL_ID)
 end
 

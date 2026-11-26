@@ -13,11 +13,10 @@
     "gpu": "GPU",
     "memory": "Memory",
     "network": "Network",
-    "network_legend": "Download / Upload",
+    "network_download": "Download",
     "network_peak": "Peak {rate}",
+    "network_upload": "Upload",
     "open_settings": "Plugin settings",
-    "pin_failed_toast": "Could not update bar widget host setting.",
-    "pin_to_bar_tooltip": "Pin {host} to this bar widget",
     "pool_degraded": "Degraded storage pool: {pools}",
     "setup_alt": "Or install via Nix, Cargo, or GitHub Releases, then run `beszel-ctl init`.",
     "setup_auth_desc": "beszel-relay could not sign in to your Beszel hub. Re-run the setup wizard to update your URL or credentials:",
@@ -32,6 +31,7 @@
     "swap": "Swap",
     "title": "Beszel Desktop",
     "vitals_load": "Load {l1} {l5} {l15}",
+    "vitals_load_cores": "Load {l1} {l5} {l15} ({cores}c)",
     "vitals_uptime": "Up {uptime}"
   },
   "settings": {
@@ -71,6 +71,10 @@
         "description": "Show live GPU utilization sparkline, VRAM usage, and power draw (auto-hides on hosts without a GPU).",
         "label": "GPU"
       },
+      "show_load": {
+        "description": "Show 1/5/15-minute load averages (with core count context) in the vitals strip.",
+        "label": "Load average"
+      },
       "show_network": {
         "description": "Show live download and upload throughput rates with a dual-series sparkline.",
         "label": "Network I/O"
@@ -80,7 +84,7 @@
         "label": "Swap usage"
       },
       "show_vitals": {
-        "description": "Show the compact vitals strip (uptime, load average, peak temperature, and battery).",
+        "description": "Show the compact vitals strip (uptime, peak temperature, and battery).",
         "label": "Vitals strip"
       }
     },
@@ -140,7 +144,6 @@
     "disk": "Disk",
     "gpu": "GPU",
     "host": "Host",
-    "load": "Load",
     "memory": "Memory",
     "network": "Network",
     "status": "Status",

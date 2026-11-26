@@ -1,15 +1,13 @@
 --!nonstrict
 -- Beszel Desktop live telemetry panel.
--- Configurable real-time view: host switcher, vitals strip, hover-scrubbable CPU,
--- memory, GPU, and dual-series network traces, per-core CPU heatmap, disk/pool health,
--- and optional top containers.
+-- Focused per-host dashboard: vitals strip, 2-column balanced grid of hover-scrubbable
+-- CPU, memory, GPU, and dual-series network traces, per-core CPU heatmap, disk/pool
+-- health, and optional top containers, inside a scrollable viewport.
 
 local fmt = require("./lib/format.luau")
 
 local STATE_KEY = "beszel.data"
 local SELECTED_HOST_KEY = "beszel.selected_host"
-local OPENED_SOURCE_KEY = "beszel.opened_source"
-local BAR_WIDGET_TYPE = "henriksvensson/beszel-desktop:bar"
 local CORE_BAR_HEIGHT = 22
 local NET_SCALE_FLOOR_BPS = 10 * 1024
 local MAX_CONTAINERS_SHOWN = 5
@@ -19,12 +17,9 @@ local INIT_COMMAND = "beszel-ctl init"
 
 local data = noctalia.state.get(STATE_KEY)
 local selectedHostId = noctalia.state.get(SELECTED_HOST_KEY)
-local openedSource = noctalia.state.get(OPENED_SOURCE_KEY)
 local isOpen = false
 local copiedUntilMs = 0
 local pendingCopyCommand = nil
-local pendingPinWidgetId = nil
-local pendingPinHostName = nil
 
 local hoveredCpuIndex = nil
 local hoveredMemIndex = nil
@@ -46,82 +41,6 @@ end
 local function activeSystem()
   local systems = type(data) == "table" and data.systems or {}
   return fmt.findSystemById(systems, selectedHostId) or systems[1]
-end
-
-local function listBeszelBarWidgets()
-  local allWidgets = noctalia.getSetting("widget")
-  if type(allWidgets) ~= "table" then
-    return {}
-  end
-  local matched = {}
-  for id, cfg in pairs(allWidgets) do
-    if type(id) == "string" and type(cfg) == "table" and cfg.type == BAR_WIDGET_TYPE then
-      table.insert(matched, {
-        id = id,
-        system = type(cfg.system) == "string" and noctalia.string.trim(cfg.system) or "",
-      })
-    end
-  end
-  table.sort(matched, function(a, b)
-    return a.id < b.id
-  end)
-  return matched
-end
-
-local function resolveTargetBarWidget(widgets)
-  if #widgets == 0 then
-    return nil
-  end
-  if #widgets == 1 then
-    return widgets[1]
-  end
-  local openedFilter = (type(openedSource) == "table" and type(openedSource.configuredFilter) == "string")
-    and string.lower(noctalia.string.trim(openedSource.configuredFilter))
-    or ""
-
-  local exact = {}
-  for _, w in ipairs(widgets) do
-    if string.lower(w.system) == openedFilter then
-      table.insert(exact, w)
-    end
-  end
-  if #exact > 0 then
-    -- When multiple widgets share the same unconfigured filter (e.g. a freshly added 2nd widget),
-    -- target the newest one so the first widget stays untouched.
-    return exact[#exact]
-  end
-  for i = #widgets, 1, -1 do
-    if widgets[i].system == "" then
-      return widgets[i]
-    end
-  end
-  return widgets[1]
-end
-
-local function tomlQuoteString(value)
-  local escaped = string.gsub(value, "\\", "\\\\")
-  escaped = string.gsub(escaped, "\"", "\\\"")
-  return "\"" .. escaped .. "\""
-end
-
-local function resolveNoctaliaBin()
-  if noctalia.commandExists("noctalia") then
-    return "noctalia"
-  end
-  local localBin = noctalia.expandPath("~/.local/bin/noctalia")
-  if noctalia.fileExists(localBin) then
-    return localBin
-  end
-  return "noctalia"
-end
-
-local function hostPeakColor(systemId, warnPct, dangerPct)
-  local latest = fmt.latestSample(data, systemId)
-  if latest == nil then
-    return "on_surface_variant"
-  end
-  local peak = math.max(tonumber(latest.cpu_pct) or 0, tonumber(latest.mem_pct) or 0)
-  return fmt.severityColor(peak, "primary", warnPct, dangerPct)
 end
 
 local function coreColor(pct, warnPct, dangerPct)
@@ -229,55 +148,6 @@ local function syncTargetCores(latest)
   end
 end
 
-local function buildHostChips(systems, currentId, warnPct, dangerPct)
-  local rows = {}
-  local currentRow = {}
-
-  for _, sys in ipairs(systems) do
-    local isSelected = currentId == sys.id
-    table.insert(currentRow, ui.row({
-      key = "host-" .. sys.id,
-      gap = 6,
-      paddingH = 10,
-      paddingV = 5,
-      align = "center",
-      radius = 8,
-      fill = isSelected and "primary_container" or "surface_container_high",
-      onClick = function()
-        selectedHostId = sys.id
-        resetHoverState()
-        animatedCores = {}
-        noctalia.state.set(SELECTED_HOST_KEY, sys.id)
-        render()
-      end,
-    }, {
-      ui.box({
-        width = 6,
-        height = 6,
-        radius = 3,
-        fill = hostPeakColor(sys.id, warnPct, dangerPct),
-      }),
-      ui.label({
-        text = sys.name,
-        fontSize = 12,
-        fontWeight = isSelected and "semibold" or "normal",
-        color = isSelected and "on_primary_container" or "on_surface",
-      }),
-    }))
-
-    if #currentRow >= 4 then
-      table.insert(rows, ui.row({ gap = 6, align = "center" }, currentRow))
-      currentRow = {}
-    end
-  end
-
-  if #currentRow > 0 then
-    table.insert(rows, ui.row({ gap = 6, align = "center" }, currentRow))
-  end
-
-  return ui.column({ gap = 6 }, rows)
-end
-
 local function buildVitalsStrip(latest)
   if noctalia.getConfig("show_vitals") == false then
     return nil
@@ -293,13 +163,25 @@ local function buildVitalsStrip(latest)
     }))
   end
 
-  if type(latest.load_avg) == "table" and #latest.load_avg >= 3 then
-    table.insert(pills, ui.label({
-      text = noctalia.tr("panel.vitals_load", {
+  if noctalia.getConfig("show_load") == true and type(latest.load_avg) == "table" and #latest.load_avg >= 3 then
+    local coreCount = type(latest.cpu_cores) == "table" and #latest.cpu_cores or 0
+    local loadText
+    if coreCount > 0 then
+      loadText = noctalia.tr("panel.vitals_load_cores", {
         l1 = string.format("%.2f", tonumber(latest.load_avg[1]) or 0),
         l5 = string.format("%.2f", tonumber(latest.load_avg[2]) or 0),
         l15 = string.format("%.2f", tonumber(latest.load_avg[3]) or 0),
-      }),
+        cores = tostring(coreCount),
+      })
+    else
+      loadText = noctalia.tr("panel.vitals_load", {
+        l1 = string.format("%.2f", tonumber(latest.load_avg[1]) or 0),
+        l5 = string.format("%.2f", tonumber(latest.load_avg[2]) or 0),
+        l15 = string.format("%.2f", tonumber(latest.load_avg[3]) or 0),
+      })
+    end
+    table.insert(pills, ui.label({
+      text = loadText,
       fontSize = 11,
       color = "on_surface_variant",
       maxLines = 1,
@@ -337,14 +219,53 @@ local function buildVitalsStrip(latest)
   end
 
   return ui.row({
-    gap = 10,
+    gap = 14,
     paddingH = 10,
     paddingV = 6,
     radius = 8,
     fill = "surface_container_high",
     align = "center",
-    justify = "space_between",
+    justify = #pills > 1 and "space_between" or "start",
   }, pills)
+end
+
+local function buildCpuSection(samples, latest, warnPct, dangerPct)
+  local cpuSample = (hoveredCpuIndex ~= nil and samples[hoveredCpuIndex]) or latest
+  local cpuPct = tonumber(cpuSample.cpu_pct) or 0
+  local cpuColor = fmt.severityColor(cpuPct, "primary", warnPct, dangerPct)
+
+  return ui.column({ gap = 6 }, {
+    ui.row({ align = "center", justify = "space_between" }, {
+      ui.label({
+        text = noctalia.tr("panel.cpu"),
+        fontSize = 13,
+        fontWeight = "medium",
+        color = "on_surface",
+      }),
+      ui.label({
+        text = string.format("%.1f%%", cpuPct),
+        fontSize = 16,
+        fontWeight = "semibold",
+        color = cpuColor,
+      }),
+    }),
+    ui.column({
+      padding = 6,
+      radius = 8,
+      fill = "surface_container_high",
+    }, {
+      ui.graph({
+        key = "cpu-graph",
+        height = 68,
+        values = extractSeries(samples, "cpu_pct"),
+        color = cpuColor,
+        lineWidth = 2,
+        fillOpacity = 0.22,
+        onPointerMove = "onCpuGraphMove",
+        onPointerLeave = "onCpuGraphLeave",
+      }),
+    }),
+  })
 end
 
 local function buildCoreHeatmap(warnPct, dangerPct)
@@ -424,6 +345,7 @@ local function buildCoreHeatmap(warnPct, dangerPct)
     table.insert(gridRows, ui.row({ gap = 4 }, cells))
   end
 
+  local estHeight = 46 + (#gridRows * (CORE_BAR_HEIGHT + 4))
   return ui.column({ gap = 6 }, {
     ui.row({ align = "center", justify = "space_between" }, {
       ui.label({
@@ -444,7 +366,85 @@ local function buildCoreHeatmap(warnPct, dangerPct)
       radius = 8,
       fill = "surface_container_high",
     }, gridRows),
-  })
+  }), estHeight
+end
+
+local function buildMemorySection(samples, latest, warnPct, dangerPct)
+  local memSample = (hoveredMemIndex ~= nil and samples[hoveredMemIndex]) or latest
+  local memPct = tonumber(memSample.mem_pct) or 0
+  local memColor = fmt.severityColor(memPct, "secondary", warnPct, dangerPct)
+
+  local memReadoutChildren = {}
+  if memSample.mem_used_bytes ~= nil and memSample.mem_total_bytes ~= nil then
+    table.insert(memReadoutChildren, ui.label({
+      text = string.format(
+        "%s / %s GiB",
+        fmt.formatGiB(memSample.mem_used_bytes),
+        fmt.formatGiB(memSample.mem_total_bytes)
+      ),
+      fontSize = 11,
+      color = "on_surface_variant",
+    }))
+  end
+  table.insert(memReadoutChildren, ui.label({
+    text = string.format("%.1f%%", memPct),
+    fontSize = 16,
+    fontWeight = "semibold",
+    color = memColor,
+  }))
+
+  local memCardChildren = {
+    ui.graph({
+      key = "mem-graph",
+      height = 68,
+      values = extractSeries(samples, "mem_pct"),
+      color = memColor,
+      lineWidth = 2,
+      fillOpacity = 0.22,
+      onPointerMove = "onMemGraphMove",
+      onPointerLeave = "onMemGraphLeave",
+    }),
+  }
+
+  local estHeight = 104
+  local swapUsed = tonumber(memSample.swap_used_bytes) or 0
+  if noctalia.getConfig("show_swap") ~= false and swapUsed > 0 and memSample.swap_total_bytes ~= nil then
+    estHeight += 18
+    table.insert(memCardChildren, ui.row({ align = "center", justify = "space_between" }, {
+      ui.label({
+        text = noctalia.tr("panel.swap"),
+        fontSize = 10,
+        color = "on_surface_variant",
+      }),
+      ui.label({
+        text = string.format(
+          "%s / %s GiB",
+          fmt.formatGiB(swapUsed),
+          fmt.formatGiB(memSample.swap_total_bytes)
+        ),
+        fontSize = 10,
+        color = "on_surface_variant",
+      }),
+    }))
+  end
+
+  return ui.column({ gap = 6 }, {
+    ui.row({ align = "center", justify = "space_between", gap = 6 }, {
+      ui.label({
+        text = noctalia.tr("panel.memory"),
+        fontSize = 13,
+        fontWeight = "medium",
+        color = "on_surface",
+      }),
+      ui.row({ gap = 6, align = "center" }, memReadoutChildren),
+    }),
+    ui.column({
+      gap = 4,
+      padding = 6,
+      radius = 8,
+      fill = "surface_container_high",
+    }, memCardChildren),
+  }), estHeight
 end
 
 local function buildGpuSection(samples, latest, warnPct, dangerPct)
@@ -502,7 +502,7 @@ local function buildGpuSection(samples, latest, warnPct, dangerPct)
         flexGrow = 1,
         maxLines = 1,
       }),
-      ui.row({ gap = 8, align = "center" }, rightChildren),
+      ui.row({ gap = 6, align = "center" }, rightChildren),
     }),
     ui.column({
       padding = 6,
@@ -511,7 +511,7 @@ local function buildGpuSection(samples, latest, warnPct, dangerPct)
     }, {
       ui.graph({
         key = "gpu-graph",
-        height = 56,
+        height = 60,
         values = extractGpuSeries(samples),
         color = gpuColor,
         lineWidth = 2,
@@ -520,7 +520,7 @@ local function buildGpuSection(samples, latest, warnPct, dangerPct)
         onPointerLeave = "onGpuGraphLeave",
       }),
     }),
-  })
+  }), 96
 end
 
 local function buildNetworkSection(samples, latest)
@@ -536,60 +536,77 @@ local function buildNetworkSection(samples, latest)
   local recvBps = tonumber(sample.net_recv_bps) or 0
   local sentBps = tonumber(sample.net_sent_bps) or 0
 
+  -- Use distinct high-contrast palette roles: primary (download) vs tertiary (upload).
+  local dlColor = "primary"
+  local ulColor = "tertiary"
+
   return ui.column({ gap = 6 }, {
-    ui.row({ align = "center", justify = "space_between", gap = 8 }, {
+    ui.row({ align = "center", justify = "space_between", gap = 6 }, {
       ui.label({
         text = noctalia.tr("panel.network"),
         fontSize = 13,
         fontWeight = "medium",
         color = "on_surface",
       }),
-      ui.row({ gap = 10, align = "center" }, {
-        ui.row({ gap = 3, align = "center" }, {
-          ui.glyph({ name = "arrow-down", size = 12, color = "primary" }),
+      ui.row({ gap = 8, align = "center" }, {
+        ui.row({ gap = 2, align = "center" }, {
+          ui.glyph({ name = "arrow-down", size = 12, color = dlColor }),
           ui.label({
             text = fmt.formatRate(recvBps),
             fontSize = 12,
             fontWeight = "semibold",
-            color = "primary",
+            color = dlColor,
             maxLines = 1,
           }),
         }),
-        ui.row({ gap = 3, align = "center" }, {
-          ui.glyph({ name = "arrow-up", size = 12, color = "secondary" }),
+        ui.row({ gap = 2, align = "center" }, {
+          ui.glyph({ name = "arrow-up", size = 12, color = ulColor }),
           ui.label({
             text = fmt.formatRate(sentBps),
             fontSize = 12,
             fontWeight = "semibold",
-            color = "secondary",
+            color = ulColor,
             maxLines = 1,
           }),
         }),
       }),
     }),
     ui.column({
-      gap = 4,
+      gap = 5,
       padding = 6,
       radius = 8,
       fill = "surface_container_high",
     }, {
       ui.graph({
         key = "net-graph",
-        height = 56,
+        height = 60,
         values = recvSeries,
         values2 = sentSeries,
-        color = "primary",
-        color2 = "secondary",
+        color = dlColor,
+        color2 = ulColor,
         lineWidth = 2,
         fillOpacity = 0.18,
         onPointerMove = "onNetGraphMove",
         onPointerLeave = "onNetGraphLeave",
       }),
       ui.row({ align = "center", justify = "space_between" }, {
-        ui.label({
-          text = noctalia.tr("panel.network_legend"),
-          fontSize = 10,
-          color = "on_surface_variant",
+        ui.row({ gap = 10, align = "center" }, {
+          ui.row({ gap = 4, align = "center" }, {
+            ui.box({ width = 7, height = 7, radius = 4, fill = dlColor }),
+            ui.label({
+              text = noctalia.tr("panel.network_download"),
+              fontSize = 10,
+              color = "on_surface_variant",
+            }),
+          }),
+          ui.row({ gap = 4, align = "center" }, {
+            ui.box({ width = 7, height = 7, radius = 4, fill = ulColor }),
+            ui.label({
+              text = noctalia.tr("panel.network_upload"),
+              fontSize = 10,
+              color = "on_surface_variant",
+            }),
+          }),
         }),
         ui.label({
           text = noctalia.tr("panel.network_peak", { rate = fmt.formatRate(peakBps) }),
@@ -598,7 +615,7 @@ local function buildNetworkSection(samples, latest)
         }),
       }),
     }),
-  })
+  }), 112
 end
 
 local function buildDiskSection(latest, warnPct, dangerPct)
@@ -614,6 +631,7 @@ local function buildDiskSection(latest, warnPct, dangerPct)
 
   local headerRight = {}
   local cardChildren = {}
+  local estHeight = 56
 
   if hasDiskPct then
     local pct = tonumber(latest.disk_pct) or 0
@@ -642,6 +660,7 @@ local function buildDiskSection(latest, warnPct, dangerPct)
       height = 6,
       radius = 3,
     }))
+    estHeight += 14
   end
 
   if hasDiskIo then
@@ -660,6 +679,7 @@ local function buildDiskSection(latest, warnPct, dangerPct)
         color = "on_surface",
       }),
     }))
+    estHeight += 22
   end
 
   if #unhealthy > 0 then
@@ -680,6 +700,7 @@ local function buildDiskSection(latest, warnPct, dangerPct)
         maxLines = 2,
       }),
     }))
+    estHeight += 36
   end
 
   return ui.column({ gap = 6 }, {
@@ -690,7 +711,7 @@ local function buildDiskSection(latest, warnPct, dangerPct)
         fontWeight = "medium",
         color = "on_surface",
       }),
-      ui.row({ gap = 8, align = "center" }, headerRight),
+      ui.row({ gap = 6, align = "center" }, headerRight),
     }),
     ui.column({
       gap = 8,
@@ -698,7 +719,7 @@ local function buildDiskSection(latest, warnPct, dangerPct)
       radius = 8,
       fill = "surface_container_high",
     }, cardChildren),
-  })
+  }), estHeight
 end
 
 local function buildContainersSection(latest)
@@ -726,10 +747,10 @@ local function buildContainersSection(latest)
         flexGrow = 1,
         maxLines = 1,
       }),
-      ui.row({ gap = 10, align = "center" }, {
+      ui.row({ gap = 8, align = "center" }, {
         ui.label({
           text = string.format("%.1f%%", tonumber(c.cpu_pct) or 0),
-          width = 40,
+          width = 38,
           textAlign = "end",
           fontSize = 11,
           fontWeight = "medium",
@@ -737,7 +758,7 @@ local function buildContainersSection(latest)
         }),
         ui.label({
           text = fmt.formatMb(c.mem_mb or 0),
-          width = 58,
+          width = 56,
           textAlign = "end",
           fontSize = 11,
           color = "on_surface_variant",
@@ -746,6 +767,7 @@ local function buildContainersSection(latest)
     }))
   end
 
+  local estHeight = 52 + (limit * 20)
   return ui.column({ gap = 6 }, {
     ui.row({ align = "center", justify = "space_between" }, {
       ui.label({
@@ -766,7 +788,7 @@ local function buildContainersSection(latest)
       radius = 8,
       fill = "surface_container_high",
     }, rows),
-  })
+  }), estHeight
 end
 
 local function buildOnboardingCard(state)
@@ -860,7 +882,6 @@ render = function()
   end
 
   local warnPct, dangerPct = fmt.thresholds()
-  local systems = type(data) == "table" and data.systems or {}
   local sys = activeSystem()
   local samples = (sys ~= nil and type(data) == "table" and type(data.historyBySystem) == "table")
     and (data.historyBySystem[sys.id] or {})
@@ -878,53 +899,7 @@ render = function()
     statusText = fmt.stateLabel(state, "")
   end
 
-  local body = {}
-
-  -- Resolve whether the viewed host can be pinned to the bar widget that opened this panel
-  local barWidgets = listBeszelBarWidgets()
-  local targetWidget = resolveTargetBarWidget(barWidgets)
-  local showPinButton = false
-  pendingPinWidgetId = nil
-  pendingPinHostName = nil
-
-  if sys ~= nil and targetWidget ~= nil and #systems > 1 then
-    local widgetResolved = fmt.findSystem(systems, targetWidget.system)
-    local alreadyExplicitlyPinned = targetWidget.system ~= ""
-      and widgetResolved ~= nil
-      and widgetResolved.id == sys.id
-    local singleDefaultMatch = #barWidgets == 1
-      and targetWidget.system == ""
-      and widgetResolved ~= nil
-      and widgetResolved.id == sys.id
-    if not alreadyExplicitlyPinned and not singleDefaultMatch then
-      showPinButton = true
-      pendingPinWidgetId = targetWidget.id
-      pendingPinHostName = sys.name
-    end
-  end
-
-  local headerActions = {}
-  if showPinButton then
-    table.insert(headerActions, ui.button({
-      glyph = "pin",
-      glyphSize = 14,
-      variant = "ghost",
-      controlSize = "sm",
-      tooltip = noctalia.tr("panel.pin_to_bar_tooltip", { host = sys.name }),
-      onClick = "onPinToBar",
-    }))
-  end
-  table.insert(headerActions, ui.button({
-    glyph = "settings",
-    glyphSize = 14,
-    variant = "ghost",
-    controlSize = "sm",
-    tooltip = noctalia.tr("panel.open_settings"),
-    onClick = "onOpenSettings",
-  }))
-
-  -- Header row (pinned above scroll)
-  table.insert(body, ui.row({ align = "center", justify = "space_between", gap = 8 }, {
+  local header = ui.row({ align = "center", justify = "space_between", gap = 8 }, {
     ui.column({ gap = 2, flexGrow = 1 }, {
       ui.label({
         text = title,
@@ -940,169 +915,77 @@ render = function()
         maxLines = 2,
       }),
     }),
-    ui.row({ gap = 4, align = "center" }, headerActions),
-  }))
-
-  -- Host switcher chips (pinned above scroll)
-  if #systems > 1 then
-    table.insert(body, buildHostChips(systems, sys ~= nil and sys.id or nil, warnPct, dangerPct))
-  end
+    ui.button({
+      glyph = "settings",
+      glyphSize = 14,
+      variant = "ghost",
+      controlSize = "sm",
+      tooltip = noctalia.tr("panel.open_settings"),
+      onClick = "onOpenSettings",
+    }),
+  })
 
   if latest == nil then
-    table.insert(body, buildOnboardingCard(state))
-    panel.render(ui.column({ gap = 12, padding = 12 }, body))
+    panel.render(ui.column({ flexGrow = 1, gap = 12 }, {
+      header,
+      buildOnboardingCard(state),
+    }))
     return
   end
 
-  local sections = {}
+  local scrollChildren = {}
 
   local vitals = buildVitalsStrip(latest)
   if vitals ~= nil then
-    table.insert(sections, vitals)
+    table.insert(scrollChildren, vitals)
   end
 
-  -- CPU section
-  local cpuSample = (hoveredCpuIndex ~= nil and samples[hoveredCpuIndex]) or latest
-  local cpuPct = tonumber(cpuSample.cpu_pct) or 0
-  local cpuColor = fmt.severityColor(cpuPct, "primary", warnPct, dangerPct)
+  -- Two balanced columns: CPU pinned top-left, Memory pinned top-right, remaining
+  -- sections placed into whichever column is currently shorter.
+  local leftCol = { buildCpuSection(samples, latest, warnPct, dangerPct) }
+  local leftHeight = 104
 
-  table.insert(sections, ui.column({ gap = 6 }, {
-    ui.row({ align = "center", justify = "space_between" }, {
-      ui.label({
-        text = noctalia.tr("panel.cpu"),
-        fontSize = 13,
-        fontWeight = "medium",
-        color = "on_surface",
-      }),
-      ui.label({
-        text = string.format("%.1f%%", cpuPct),
-        fontSize = 16,
-        fontWeight = "semibold",
-        color = cpuColor,
-      }),
-    }),
-    ui.column({
-      padding = 6,
-      radius = 8,
-      fill = "surface_container_high",
-    }, {
-      ui.graph({
-        key = "cpu-graph",
-        height = 64,
-        values = extractSeries(samples, "cpu_pct"),
-        color = cpuColor,
-        lineWidth = 2,
-        fillOpacity = 0.22,
-        onPointerMove = "onCpuGraphMove",
-        onPointerLeave = "onCpuGraphLeave",
-      }),
-    }),
+  local memNode, memHeight = buildMemorySection(samples, latest, warnPct, dangerPct)
+  local rightCol = { memNode }
+  local rightHeight = memHeight
+
+  local extras = {}
+  local function addExtra(node, height)
+    if node ~= nil then
+      table.insert(extras, { node = node, height = height or 96 })
+    end
+  end
+
+  local heatmapNode, heatmapHeight = buildCoreHeatmap(warnPct, dangerPct)
+  addExtra(heatmapNode, heatmapHeight)
+  local netNode, netHeight = buildNetworkSection(samples, latest)
+  addExtra(netNode, netHeight)
+  local gpuNode, gpuHeight = buildGpuSection(samples, latest, warnPct, dangerPct)
+  addExtra(gpuNode, gpuHeight)
+  local diskNode, diskHeight = buildDiskSection(latest, warnPct, dangerPct)
+  addExtra(diskNode, diskHeight)
+  local ctrNode, ctrHeight = buildContainersSection(latest)
+  addExtra(ctrNode, ctrHeight)
+
+  for _, item in ipairs(extras) do
+    if leftHeight <= rightHeight then
+      table.insert(leftCol, item.node)
+      leftHeight += item.height + 12
+    else
+      table.insert(rightCol, item.node)
+      rightHeight += item.height + 12
+    end
+  end
+
+  table.insert(scrollChildren, ui.row({ gap = 14, align = "start" }, {
+    ui.column({ gap = 12, flexGrow = 1 }, leftCol),
+    ui.column({ gap = 12, flexGrow = 1 }, rightCol),
   }))
 
-  -- Per-core CPU heatmap
-  local heatmap = buildCoreHeatmap(warnPct, dangerPct)
-  if heatmap ~= nil then
-    table.insert(sections, heatmap)
-  end
-
-  -- Memory section (+ optional swap readout when used > 0)
-  local memSample = (hoveredMemIndex ~= nil and samples[hoveredMemIndex]) or latest
-  local memPct = tonumber(memSample.mem_pct) or 0
-  local memColor = fmt.severityColor(memPct, "secondary", warnPct, dangerPct)
-
-  local memReadoutChildren = {}
-  if memSample.mem_used_bytes ~= nil and memSample.mem_total_bytes ~= nil then
-    table.insert(memReadoutChildren, ui.label({
-      text = string.format(
-        "%s / %s GiB",
-        fmt.formatGiB(memSample.mem_used_bytes),
-        fmt.formatGiB(memSample.mem_total_bytes)
-      ),
-      fontSize = 11,
-      color = "on_surface_variant",
-    }))
-  end
-  table.insert(memReadoutChildren, ui.label({
-    text = string.format("%.1f%%", memPct),
-    fontSize = 16,
-    fontWeight = "semibold",
-    color = memColor,
+  panel.render(ui.column({ flexGrow = 1, gap = 12 }, {
+    header,
+    ui.scroll({ key = "metrics-scroll", flexGrow = 1, gap = 12 }, scrollChildren),
   }))
-
-  local memCardChildren = {
-    ui.graph({
-      key = "mem-graph",
-      height = 64,
-      values = extractSeries(samples, "mem_pct"),
-      color = memColor,
-      lineWidth = 2,
-      fillOpacity = 0.22,
-      onPointerMove = "onMemGraphMove",
-      onPointerLeave = "onMemGraphLeave",
-    }),
-  }
-
-  local swapUsed = tonumber(memSample.swap_used_bytes) or 0
-  if noctalia.getConfig("show_swap") ~= false and swapUsed > 0 and memSample.swap_total_bytes ~= nil then
-    table.insert(memCardChildren, ui.row({ align = "center", justify = "space_between" }, {
-      ui.label({
-        text = noctalia.tr("panel.swap"),
-        fontSize = 10,
-        color = "on_surface_variant",
-      }),
-      ui.label({
-        text = string.format(
-          "%s / %s GiB",
-          fmt.formatGiB(swapUsed),
-          fmt.formatGiB(memSample.swap_total_bytes)
-        ),
-        fontSize = 10,
-        color = "on_surface_variant",
-      }),
-    }))
-  end
-
-  table.insert(sections, ui.column({ gap = 6 }, {
-    ui.row({ align = "center", justify = "space_between" }, {
-      ui.label({
-        text = noctalia.tr("panel.memory"),
-        fontSize = 13,
-        fontWeight = "medium",
-        color = "on_surface",
-      }),
-      ui.row({ gap = 8, align = "center" }, memReadoutChildren),
-    }),
-    ui.column({
-      gap = 4,
-      padding = 6,
-      radius = 8,
-      fill = "surface_container_high",
-    }, memCardChildren),
-  }))
-
-  local gpuSection = buildGpuSection(samples, latest, warnPct, dangerPct)
-  if gpuSection ~= nil then
-    table.insert(sections, gpuSection)
-  end
-
-  local netSection = buildNetworkSection(samples, latest)
-  if netSection ~= nil then
-    table.insert(sections, netSection)
-  end
-
-  local diskSection = buildDiskSection(latest, warnPct, dangerPct)
-  if diskSection ~= nil then
-    table.insert(sections, diskSection)
-  end
-
-  local containersSection = buildContainersSection(latest)
-  if containersSection ~= nil then
-    table.insert(sections, containersSection)
-  end
-
-  table.insert(body, ui.scroll({ key = "metrics-scroll", gap = 12, flexGrow = 1 }, sections))
-
-  panel.render(ui.column({ gap = 12, padding = 12 }, body))
 end
 
 local function sampleIndexFromNormX(normX)
@@ -1194,37 +1077,6 @@ function onOpenSettings()
   noctalia.openSettings()
 end
 
-function onPinToBar()
-  if type(pendingPinWidgetId) ~= "string" or type(pendingPinHostName) ~= "string" then
-    return
-  end
-  local widgetId = pendingPinWidgetId
-  local hostName = pendingPinHostName
-  noctalia.runAsync({
-    resolveNoctaliaBin(),
-    "msg",
-    "config-set",
-    "widget." .. widgetId .. ".system",
-    tomlQuoteString(hostName),
-  }, function(res)
-    if res ~= nil and res.exitCode == 0 and not res.timedOut then
-      openedSource = {
-        configuredFilter = hostName,
-        displayedHostId = selectedHostId,
-      }
-      noctalia.state.set(OPENED_SOURCE_KEY, openedSource)
-      if isOpen then
-        render()
-      end
-    else
-      noctalia.notifyError(
-        noctalia.tr("panel.title"),
-        noctalia.tr("panel.pin_failed_toast")
-      )
-    end
-  end)
-end
-
 function onCopySetupCommand()
   if type(pendingCopyCommand) ~= "string" or pendingCopyCommand == "" then
     return
@@ -1275,13 +1127,6 @@ noctalia.state.watch(SELECTED_HOST_KEY, function(hostId)
     if isOpen then
       render()
     end
-  end
-end)
-
-noctalia.state.watch(OPENED_SOURCE_KEY, function(nextSource)
-  openedSource = nextSource
-  if isOpen then
-    render()
   end
 end)
 

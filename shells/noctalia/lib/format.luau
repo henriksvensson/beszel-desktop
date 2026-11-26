@@ -42,6 +42,15 @@ function M.formatGiB(bytes)
   return string.format("%.1f", (tonumber(bytes) or 0) / GIB_BYTES)
 end
 
+function M.formatGiBCompact(usedBytes, totalBytes)
+  local used = (tonumber(usedBytes) or 0) / GIB_BYTES
+  local total = (tonumber(totalBytes) or 0) / GIB_BYTES
+  if total >= 100 then
+    return string.format("%.0f / %.0f GiB", used, total)
+  end
+  return string.format("%.1f / %.0f GiB", used, total)
+end
+
 function M.formatMb(mb)
   local value = math.max(0, tonumber(mb) or 0)
   if value >= 1024 then

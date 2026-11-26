@@ -123,9 +123,9 @@ entry = "bar.luau"
 [[panel]]
 id              = "panel"
 entry           = "panel.luau"
-width           = 380
+width           = 660
 height          = "content"
-max_height      = 680
+max_height      = 640
 placement       = "attached"
 position        = "auto"
 open_near_click = true
@@ -136,6 +136,13 @@ open_near_click = true
   label_key       = "settings.panel.show_vitals.label"
   description_key = "settings.panel.show_vitals.description"
   default         = true
+
+  [[panel.setting]]
+  key             = "show_load"
+  type            = "bool"
+  label_key       = "settings.panel.show_load.label"
+  description_key = "settings.panel.show_load.description"
+  default         = false
 
   [[panel.setting]]
   key             = "show_cores"

@@ -26,9 +26,9 @@ Monitor remote servers, homelab nodes, and other machines live (~1 Hz) from a [B
 1. Install and enable `henriksvensson/beszel-desktop` in **Noctalia Settings → Plugins** (or link `shells/noctalia` into `~/.local/share/noctalia/plugins/beszel-desktop` for local development).
 2. Add **Beszel Desktop** to your bar in **Noctalia Settings → Bar**.
    - If `beszel-relay` isn't installed or configured yet, clicking the bar widget opens an onboarding card where you can copy the install & setup command in one click; the widget connects automatically as soon as `beszel-ctl init` completes.
-   - To pin multiple remote hosts side by side on your bar, add another **Beszel Desktop** widget in **Noctalia Settings → Bar**, click it to open the panel, select the host you want, and click **Pin to bar** (you can also scroll on any bar pill to cycle hosts temporarily, or set **Host** directly in the widget's settings).
+   - To monitor multiple remote hosts side by side on your bar, add additional **Beszel Desktop** widgets in **Noctalia Settings → Bar** and set **Host** on each instance (unpinned widgets also support scrolling to cycle hosts).
    - Customize what each bar widget displays (host name, CPU, memory, GPU, temperature, disk, and split/combined/download/upload network throughput) independently per bar instance.
-3. Click any host pill to open the attached telemetry panel focused on that host, or toggle the panel via IPC:
+3. Click any host pill to open its attached telemetry panel, or toggle the panel via IPC:
 
 ```sh
 noctalia msg panel-toggle henriksvensson/beszel-desktop:panel
@@ -52,7 +52,8 @@ Sections automatically hide themselves on hosts that do not report the correspon
 
 | Setting | Type | Default | Description |
 | --- | --- | --- | --- |
-| `show_vitals` | `bool` | `true` | Show the compact vitals strip (uptime, load average, peak temperature, and battery). |
+| `show_vitals` | `bool` | `true` | Show the compact vitals strip (uptime, peak temperature, and battery). |
+| `show_load` | `bool` | `false` | Show 1/5/15-minute load averages (with core count context) in the vitals strip. |
 | `show_cores` | `bool` | `true` | Show the frame-interpolated per-core CPU heatmap. |
 | `show_swap` | `bool` | `true` | Show swap usage under the memory graph whenever swap is in use. |
 | `show_gpu` | `bool` | `true` | Show primary GPU utilization sparkline, VRAM usage, and power draw. |
@@ -75,6 +76,6 @@ Sections automatically hide themselves on hosts that do not report the correspon
 
 ## Notes
 
-- **Spawned processes:** The singleton `service` entry runs one long-lived `beszel-ctl watch --raw --reconnect` process (reading from the local user-only Unix socket `$XDG_RUNTIME_DIR/beszel-relay.sock`) and shares parsed snapshots/samples through `noctalia.state`. Clicking **Pin to bar** in the panel invokes `noctalia msg config-set widget.<id>.system "<host>"` to persist the chosen host for that bar widget.
+- **Spawned processes:** The singleton `service` entry runs one long-lived `beszel-ctl watch --raw --reconnect` process (reading from the local user-only Unix socket `$XDG_RUNTIME_DIR/beszel-relay.sock`) and shares parsed snapshots/samples through `noctalia.state`.
 - **Network & credentials:** This plugin makes no network requests, writes no files, and never accesses Beszel hub credentials (credentials stay inside `beszel-relay`).
 - **Auto-pause:** Disabling the plugin stops the `beszel-ctl` stream, allowing `beszel-relay` to pause upstream `rt_metrics` polling automatically.
