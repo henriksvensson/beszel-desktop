@@ -7,6 +7,8 @@ local fmt = require("./lib/format.luau")
 
 local STATE_KEY = "beszel.data"
 local SELECTED_HOST_KEY = "beszel.selected_host"
+local OPENED_SOURCE_KEY = "beszel.opened_source"
+local BAR_WIDGET_TYPE = "henriksvensson/beszel-desktop:bar"
 local CORE_BAR_HEIGHT = 22
 local INSTALL_COMMAND =
   "curl -fsSL https://raw.githubusercontent.com/henriksvensson/beszel-desktop/main/packaging/install.sh | sh"
@@ -14,9 +16,12 @@ local INIT_COMMAND = "beszel-ctl init"
 
 local data = noctalia.state.get(STATE_KEY)
 local selectedHostId = noctalia.state.get(SELECTED_HOST_KEY)
+local openedSource = noctalia.state.get(OPENED_SOURCE_KEY)
 local isOpen = false
 local copiedUntilMs = 0
 local pendingCopyCommand = nil
+local pendingPinWidgetId = nil
+local pendingPinHostName = nil
 
 local hoveredCpuIndex = nil
 local hoveredMemIndex = nil
@@ -28,6 +33,73 @@ local render
 local function activeSystem()
   local systems = type(data) == "table" and data.systems or {}
   return fmt.findSystemById(systems, selectedHostId) or systems[1]
+end
+
+local function listBeszelBarWidgets()
+  local allWidgets = noctalia.getSetting("widget")
+  if type(allWidgets) ~= "table" then
+    return {}
+  end
+  local matched = {}
+  for id, cfg in pairs(allWidgets) do
+    if type(id) == "string" and type(cfg) == "table" and cfg.type == BAR_WIDGET_TYPE then
+      table.insert(matched, {
+        id = id,
+        system = type(cfg.system) == "string" and noctalia.string.trim(cfg.system) or "",
+      })
+    end
+  end
+  table.sort(matched, function(a, b)
+    return a.id < b.id
+  end)
+  return matched
+end
+
+local function resolveTargetBarWidget(widgets)
+  if #widgets == 0 then
+    return nil
+  end
+  if #widgets == 1 then
+    return widgets[1]
+  end
+  local openedFilter = (type(openedSource) == "table" and type(openedSource.configuredFilter) == "string")
+    and string.lower(noctalia.string.trim(openedSource.configuredFilter))
+    or ""
+
+  local exact = {}
+  for _, w in ipairs(widgets) do
+    if string.lower(w.system) == openedFilter then
+      table.insert(exact, w)
+    end
+  end
+  if #exact > 0 then
+    -- When multiple widgets share the same unconfigured filter (e.g. a freshly added 2nd widget),
+    -- target the newest one so the first widget stays untouched.
+    return exact[#exact]
+  end
+  for i = #widgets, 1, -1 do
+    if widgets[i].system == "" then
+      return widgets[i]
+    end
+  end
+  return widgets[1]
+end
+
+local function tomlQuoteString(value)
+  local escaped = string.gsub(value, "\\", "\\\\")
+  escaped = string.gsub(escaped, "\"", "\\\"")
+  return "\"" .. escaped .. "\""
+end
+
+local function resolveNoctaliaBin()
+  if noctalia.commandExists("noctalia") then
+    return "noctalia"
+  end
+  local localBin = noctalia.expandPath("~/.local/bin/noctalia")
+  if noctalia.fileExists(localBin) then
+    return localBin
+  end
+  return "noctalia"
 end
 
 local function hostPeakColor(systemId, warnPct, dangerPct)
@@ -353,8 +425,52 @@ render = function()
 
   local body = {}
 
+  -- Resolve whether the viewed host can be pinned to the bar widget that opened this panel
+  local barWidgets = listBeszelBarWidgets()
+  local targetWidget = resolveTargetBarWidget(barWidgets)
+  local showPinButton = false
+  pendingPinWidgetId = nil
+  pendingPinHostName = nil
+
+  if sys ~= nil and targetWidget ~= nil and #systems > 1 then
+    local widgetResolved = fmt.findSystem(systems, targetWidget.system)
+    local alreadyExplicitlyPinned = targetWidget.system ~= ""
+      and widgetResolved ~= nil
+      and widgetResolved.id == sys.id
+    local singleDefaultMatch = #barWidgets == 1
+      and targetWidget.system == ""
+      and widgetResolved ~= nil
+      and widgetResolved.id == sys.id
+    if not alreadyExplicitlyPinned and not singleDefaultMatch then
+      showPinButton = true
+      pendingPinWidgetId = targetWidget.id
+      pendingPinHostName = sys.name
+    end
+  end
+
+  local headerActions = {}
+  if showPinButton then
+    table.insert(headerActions, ui.button({
+      text = noctalia.tr("panel.pin_to_bar"),
+      glyph = "pin",
+      glyphSize = 13,
+      variant = "secondary",
+      controlSize = "sm",
+      tooltip = noctalia.tr("panel.pin_to_bar_tooltip", { host = sys.name }),
+      onClick = "onPinToBar",
+    }))
+  end
+  table.insert(headerActions, ui.button({
+    glyph = "settings",
+    glyphSize = 14,
+    variant = "ghost",
+    controlSize = "sm",
+    tooltip = noctalia.tr("panel.open_settings"),
+    onClick = "onOpenSettings",
+  }))
+
   -- Header row
-  table.insert(body, ui.row({ align = "center", justify = "space_between" }, {
+  table.insert(body, ui.row({ align = "center", justify = "space_between", gap = 8 }, {
     ui.column({ gap = 2, flexGrow = 1 }, {
       ui.label({
         text = title,
@@ -370,14 +486,7 @@ render = function()
         maxLines = 2,
       }),
     }),
-    ui.button({
-      glyph = "settings",
-      glyphSize = 14,
-      variant = "ghost",
-      controlSize = "sm",
-      tooltip = noctalia.tr("panel.open_settings"),
-      onClick = "onOpenSettings",
-    }),
+    ui.row({ gap = 4, align = "center" }, headerActions),
   }))
 
   -- Host switcher chips
@@ -549,6 +658,41 @@ function onOpenSettings()
   noctalia.openSettings()
 end
 
+function onPinToBar()
+  if type(pendingPinWidgetId) ~= "string" or type(pendingPinHostName) ~= "string" then
+    return
+  end
+  local widgetId = pendingPinWidgetId
+  local hostName = pendingPinHostName
+  noctalia.exec({
+    resolveNoctaliaBin(),
+    "msg",
+    "config-set",
+    "widget." .. widgetId .. ".system",
+    tomlQuoteString(hostName),
+  }, function(res)
+    if res ~= nil and res.ok then
+      openedSource = {
+        configuredFilter = hostName,
+        displayedHostId = selectedHostId,
+      }
+      noctalia.state.set(OPENED_SOURCE_KEY, openedSource)
+      noctalia.notify(
+        noctalia.tr("panel.title"),
+        noctalia.tr("panel.pinned_toast", { host = hostName })
+      )
+      if isOpen then
+        render()
+      end
+    else
+      noctalia.notifyError(
+        noctalia.tr("panel.title"),
+        noctalia.tr("panel.pin_failed_toast")
+      )
+    end
+  end)
+end
+
 function onCopySetupCommand()
   if type(pendingCopyCommand) ~= "string" or pendingCopyCommand == "" then
     return
@@ -602,6 +746,13 @@ noctalia.state.watch(SELECTED_HOST_KEY, function(hostId)
     if isOpen then
       render()
     end
+  end
+end)
+
+noctalia.state.watch(OPENED_SOURCE_KEY, function(nextSource)
+  openedSource = nextSource
+  if isOpen then
+    render()
   end
 end)
 

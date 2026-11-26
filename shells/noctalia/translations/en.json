@@ -7,6 +7,10 @@
     "empty": "Waiting for live metrics from beszel-relay.",
     "memory": "Memory",
     "open_settings": "Plugin settings",
+    "pin_failed_toast": "Could not update bar widget host setting.",
+    "pin_to_bar": "Pin to bar",
+    "pin_to_bar_tooltip": "Show {host} on this bar widget",
+    "pinned_toast": "Pinned {host} to bar widget.",
     "setup_alt": "Or install via Nix, Cargo, or GitHub Releases, then run `beszel-ctl init`.",
     "setup_auth_desc": "beszel-relay could not sign in to your Beszel hub. Re-run the setup wizard to update your URL or credentials:",
     "setup_auth_title": "Check Beszel credentials",
@@ -42,8 +46,8 @@
       "label": "Stale threshold (seconds)"
     },
     "system": {
-      "description": "Beszel host name or system ID to display in this bar widget. Leave empty for the first host.",
-      "label": "Host filter"
+      "description": "Beszel host to show in this bar widget (leave empty for the first available host).",
+      "label": "Host"
     },
     "warn_threshold": {
       "description": "Highlight CPU, memory, and core bars in warning color at or above this percentage.",

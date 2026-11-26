@@ -1,16 +1,31 @@
 --!nonstrict
 -- Beszel Desktop bar widget.
--- Supports multiple independent host instances via per-widget `system` setting.
+-- Supports multiple independent host instances via per-widget `system` setting,
+-- monochrome icons in normal state (colored only on warning/danger), and
+-- scroll-to-switch across discovered hosts.
 
 local fmt = require("./lib/format.luau")
 
 local PANEL_ID = "henriksvensson/beszel-desktop:panel"
 local STATE_KEY = "beszel.data"
 local SELECTED_HOST_KEY = "beszel.selected_host"
+local OPENED_SOURCE_KEY = "beszel.opened_source"
 
 local data = noctalia.state.get(STATE_KEY)
+local sessionHostId = nil
 
 noctalia.setUpdateInterval(1000)
+
+local function resolveDisplayedSystem(systems, filter)
+  if sessionHostId ~= nil then
+    local overridden = fmt.findSystemById(systems, sessionHostId)
+    if overridden ~= nil then
+      return overridden
+    end
+    sessionHostId = nil
+  end
+  return fmt.findSystem(systems, filter)
+end
 
 local function buildTooltip(sys, latest, state, filter)
   local rows = {}
@@ -43,12 +58,13 @@ local function render()
   local warnPct, dangerPct = fmt.thresholds()
 
   local systems = type(data) == "table" and data.systems or {}
-  local sys = fmt.findSystem(systems, filter)
+  local sys = resolveDisplayedSystem(systems, filter)
+  local effectiveFilter = sessionHostId ~= nil and "" or filter
   local latest = sys ~= nil and fmt.latestSample(data, sys.id) or nil
-  local state = fmt.effectiveState(data, sys, latest, filter)
+  local state = fmt.effectiveState(data, sys, latest, effectiveFilter)
   local statusColor = fmt.stateColor(state)
 
-  barWidget.setTooltip(buildTooltip(sys, latest, state, filter))
+  barWidget.setTooltip(buildTooltip(sys, latest, state, effectiveFilter))
 
   local showMetrics = latest ~= nil
     and state ~= "disconnected"
@@ -57,7 +73,7 @@ local function render()
 
   if not showMetrics then
     barWidget.render(ui.label({
-      text = fmt.stateLabel(state, filter),
+      text = fmt.stateLabel(state, effectiveFilter),
       color = statusColor,
       maxLines = 1,
     }))
@@ -67,16 +83,10 @@ local function render()
   local cpuPct = tonumber(latest.cpu_pct) or 0
   local memPct = tonumber(latest.mem_pct) or 0
 
-  local cpuIconColor = state == "connected"
-    and fmt.severityColor(cpuPct, "primary", warnPct, dangerPct)
-    or statusColor
-  local cpuTextColor = state == "connected"
+  local cpuColor = state == "connected"
     and fmt.severityColor(cpuPct, "on_surface", warnPct, dangerPct)
     or statusColor
-  local memIconColor = state == "connected"
-    and fmt.severityColor(memPct, "secondary", warnPct, dangerPct)
-    or statusColor
-  local memTextColor = state == "connected"
+  local memColor = state == "connected"
     and fmt.severityColor(memPct, "on_surface", warnPct, dangerPct)
     or statusColor
 
@@ -84,13 +94,15 @@ local function render()
     barWidget.render(ui.column({ gap = 2, align = "center" }, {
       ui.label({
         text = fmt.padPercent(cpuPct),
-        color = cpuTextColor,
+        color = cpuColor,
         fontWeight = "medium",
         maxLines = 1,
       }),
       ui.label({
         text = fmt.padPercent(memPct),
-        color = state == "connected" and fmt.severityColor(memPct, "on_surface_variant", warnPct, dangerPct) or statusColor,
+        color = state == "connected"
+          and fmt.severityColor(memPct, "on_surface_variant", warnPct, dangerPct)
+          or statusColor,
         maxLines = 1,
       }),
     }))
@@ -107,23 +119,23 @@ local function render()
   end
 
   table.insert(items, ui.row({ gap = 3, align = "center" }, {
-    ui.glyph({ name = "cpu-usage", size = 14, color = cpuIconColor }),
+    ui.glyph({ name = "cpu-usage", size = 14, color = cpuColor }),
     ui.label({
       text = fmt.padPercent(cpuPct),
       width = 30,
       textAlign = "end",
-      color = cpuTextColor,
+      color = cpuColor,
       maxLines = 1,
     }),
   }))
 
   table.insert(items, ui.row({ gap = 3, align = "center" }, {
-    ui.glyph({ name = "memory", size = 14, color = memIconColor }),
+    ui.glyph({ name = "memory", size = 14, color = memColor }),
     ui.label({
       text = fmt.padPercent(memPct),
       width = 30,
       textAlign = "end",
-      color = memTextColor,
+      color = memColor,
       maxLines = 1,
     }),
   }))
@@ -141,16 +153,46 @@ function update()
 end
 
 function onConfigChanged()
+  sessionHostId = nil
+  render()
+end
+
+function onScroll(axis, steps, startsGesture)
+  if axis ~= "vertical" or not startsGesture then
+    return
+  end
+  local systems = type(data) == "table" and data.systems or {}
+  if #systems < 2 then
+    return
+  end
+  local filter = noctalia.getConfig("system") or ""
+  local current = resolveDisplayedSystem(systems, filter)
+  local currentIndex = 1
+  if current ~= nil then
+    for i, s in ipairs(systems) do
+      if s.id == current.id then
+        currentIndex = i
+        break
+      end
+    end
+  end
+  local delta = (tonumber(steps) or 0) > 0 and 1 or -1
+  local nextIndex = ((currentIndex - 1 + delta) % #systems) + 1
+  sessionHostId = systems[nextIndex].id
   render()
 end
 
 function onClick()
   local filter = noctalia.getConfig("system") or ""
   local systems = type(data) == "table" and data.systems or {}
-  local sys = fmt.findSystem(systems, filter)
+  local sys = resolveDisplayedSystem(systems, filter)
   if sys ~= nil then
     noctalia.state.set(SELECTED_HOST_KEY, sys.id)
   end
+  noctalia.state.set(OPENED_SOURCE_KEY, {
+    configuredFilter = filter,
+    displayedHostId = sys ~= nil and sys.id or nil,
+  })
   noctalia.togglePanel(PANEL_ID)
 end
 
