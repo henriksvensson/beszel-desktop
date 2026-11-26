@@ -1,10 +1,14 @@
 //! Defensive wire types for Beszel / PocketBase HTTP and SSE payloads.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
-use crate::local::LiveSample;
+use crate::local::{ContainerSample, GpuSample, LiveSample};
 
 const GIB_BYTES: f64 = 1024.0 * 1024.0 * 1024.0;
+const MIB_BYTES: f64 = 1024.0 * 1024.0;
+const MAX_CONTAINERS: usize = 8;
 
 /// PocketBase realtime topic for watching changes to the `systems` collection.
 pub const SYSTEMS_COLLECTION_TOPIC: &str = "systems/*";
@@ -62,6 +66,8 @@ pub struct RtMetricsPayload {
     pub stats: Option<UpstreamStats>,
     #[serde(default)]
     pub info: Option<UpstreamSystemInfo>,
+    #[serde(default)]
+    pub container: Vec<UpstreamContainerStats>,
 }
 
 /// Summary fields carried on system records and `rt_metrics.info`.
@@ -79,6 +85,53 @@ pub struct UpstreamSystemInfo {
     /// Memory percent summary.
     #[serde(default)]
     pub mp: Option<f64>,
+    /// Root disk percent summary.
+    #[serde(default)]
+    pub dp: Option<f64>,
+    /// Dashboard / peak temperature in Celsius.
+    #[serde(default)]
+    pub dt: Option<f64>,
+    /// Load averages `[1m, 5m, 15m]`.
+    #[serde(default)]
+    pub la: Option<[f64; 3]>,
+    /// Battery `[percent, state]`.
+    #[serde(default)]
+    pub bat: Option<[u8; 2]>,
+}
+
+/// Upstream per-GPU metrics map entry (`stats.g`).
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct UpstreamGpuData {
+    #[serde(default)]
+    pub n: String,
+    #[serde(default)]
+    pub u: f64,
+    #[serde(default)]
+    pub mu: Option<f64>,
+    #[serde(default)]
+    pub mt: Option<f64>,
+    #[serde(default)]
+    pub p: Option<f64>,
+}
+
+/// Upstream storage pool health entry (`stats.z`).
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct UpstreamPoolStats {
+    #[serde(default)]
+    pub n: Option<String>,
+    #[serde(default)]
+    pub h: Option<String>,
+}
+
+/// Upstream container metrics entry (`rt_metrics.container[]`).
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct UpstreamContainerStats {
+    #[serde(default)]
+    pub n: String,
+    #[serde(default)]
+    pub c: f64,
+    #[serde(default)]
+    pub m: f64,
 }
 
 /// Detailed live system metrics carried in `rt_metrics.stats`.
@@ -111,19 +164,56 @@ pub struct UpstreamStats {
     /// Deprecated buffer/cache memory in GiB (fallback when `mem` is absent).
     #[serde(default)]
     pub mb: Option<f64>,
+    /// Root disk total GiB.
+    #[serde(default)]
+    pub d: Option<f64>,
+    /// Root disk used GiB.
+    #[serde(default)]
+    pub du: Option<f64>,
+    /// Root disk utilization percent.
+    #[serde(default)]
+    pub dp: Option<f64>,
+    /// Aggregate disk I/O `[read_bytes/s, write_bytes/s]`.
+    #[serde(default)]
+    pub dio: Option<[u64; 2]>,
+    /// Aggregate bandwidth `[sent_bytes/s, recv_bytes/s]`.
+    #[serde(default)]
+    pub b: Option<[u64; 2]>,
+    /// Deprecated network sent MB/s fallback.
+    #[serde(default)]
+    pub ns: Option<f64>,
+    /// Deprecated network recv MB/s fallback.
+    #[serde(default)]
+    pub nr: Option<f64>,
+    /// Load averages `[1m, 5m, 15m]`.
+    #[serde(default)]
+    pub la: Option<[f64; 3]>,
+    /// Temperature sensors map (`name -> °C`).
+    #[serde(default)]
+    pub t: Option<BTreeMap<String, f64>>,
+    /// Battery `[percent, state]`.
+    #[serde(default)]
+    pub bat: Option<[u8; 2]>,
+    /// Per-GPU data map (`id -> GPUData`).
+    #[serde(default)]
+    pub g: Option<BTreeMap<String, UpstreamGpuData>>,
+    /// Storage pools map (`id -> pool stats`).
+    #[serde(default)]
+    pub z: Option<BTreeMap<String, UpstreamPoolStats>>,
 }
 
 impl RtMetricsPayload {
-    /// Extract a normalized live CPU/memory sample stamped with `timestamp_ms`.
+    /// Extract a normalized live sample stamped with `timestamp_ms`.
     pub fn to_live_sample(&self, timestamp_ms: i64) -> Option<LiveSample> {
         let stats = self.stats.as_ref()?;
-        let cpu_pct = stats
-            .cpu
-            .or_else(|| self.info.as_ref().and_then(|i| i.cpu))?;
-        let mem_pct = stats.mp.or_else(|| self.info.as_ref().and_then(|i| i.mp))?;
+        let info = self.info.as_ref();
+        let cpu_pct = stats.cpu.or_else(|| info.and_then(|i| i.cpu))?;
+        let mem_pct = stats.mp.or_else(|| info.and_then(|i| i.mp))?;
 
         let (mem_total_bytes, mem_used_bytes, mem_buff_cache_bytes) = stats.memory_bytes();
         let (swap_total_bytes, swap_used_bytes) = stats.swap_bytes();
+        let (net_sent_bps, net_recv_bps) = stats.network_bps();
+        let (disk_read_bps, disk_write_bps) = stats.disk_io_bps();
 
         Some(LiveSample {
             timestamp_ms,
@@ -135,6 +225,20 @@ impl RtMetricsPayload {
             mem_buff_cache_bytes,
             swap_used_bytes,
             swap_total_bytes,
+            uptime_secs: info.and_then(|i| i.u),
+            load_avg: stats.la.or_else(|| info.and_then(|i| i.la)),
+            temp_max_c: stats.peak_temp_c(info),
+            battery_pct: stats.battery_pct(info),
+            net_sent_bps,
+            net_recv_bps,
+            disk_pct: stats.dp.or_else(|| info.and_then(|i| i.dp)),
+            disk_used_gb: stats.du,
+            disk_total_gb: stats.d,
+            disk_read_bps,
+            disk_write_bps,
+            unhealthy_pools: stats.unhealthy_pools(),
+            gpus: stats.gpu_samples(),
+            containers: extract_top_containers(&self.container),
         })
     }
 }
@@ -159,6 +263,105 @@ impl UpstreamStats {
             None => (None, None),
         }
     }
+
+    fn network_bps(&self) -> (Option<u64>, Option<u64>) {
+        if let Some([sent, recv]) = self.b {
+            return (Some(sent), Some(recv));
+        }
+        (
+            self.ns.and_then(mib_to_bytes),
+            self.nr.and_then(mib_to_bytes),
+        )
+    }
+
+    fn disk_io_bps(&self) -> (Option<u64>, Option<u64>) {
+        match self.dio {
+            Some([read, write]) => (Some(read), Some(write)),
+            None => (None, None),
+        }
+    }
+
+    fn peak_temp_c(&self, info: Option<&UpstreamSystemInfo>) -> Option<f64> {
+        if let Some(dt) = info.and_then(|i| i.dt)
+            && dt > 0.0
+        {
+            return Some(dt);
+        }
+        let temps = self.t.as_ref()?;
+        temps
+            .values()
+            .copied()
+            .filter(|v| v.is_finite() && *v > 0.0)
+            .reduce(f64::max)
+    }
+
+    fn battery_pct(&self, info: Option<&UpstreamSystemInfo>) -> Option<u8> {
+        let bat = self.bat.or_else(|| info.and_then(|i| i.bat))?;
+        Some(bat[0].min(100))
+    }
+
+    fn unhealthy_pools(&self) -> Option<Vec<String>> {
+        let pools = self.z.as_ref()?;
+        let degraded: Vec<String> = pools
+            .iter()
+            .filter_map(|(key, pool)| {
+                let health = pool.h.as_deref()?;
+                if health.eq_ignore_ascii_case("ONLINE") {
+                    return None;
+                }
+                let name = pool.n.as_deref().unwrap_or(key);
+                Some(format!("{name}: {health}"))
+            })
+            .collect();
+        (!degraded.is_empty()).then_some(degraded)
+    }
+
+    fn gpu_samples(&self) -> Option<Vec<GpuSample>> {
+        let map = self.g.as_ref()?;
+        if map.is_empty() {
+            return None;
+        }
+        let samples = map
+            .iter()
+            .map(|(id, gpu)| GpuSample {
+                name: if gpu.n.is_empty() {
+                    id.clone()
+                } else {
+                    gpu.n.clone()
+                },
+                usage_pct: gpu.u,
+                mem_used_mb: gpu.mu.filter(|v| *v >= 0.0),
+                mem_total_mb: gpu.mt.filter(|v| *v > 0.0),
+                power_w: gpu.p.filter(|v| *v > 0.0),
+            })
+            .collect();
+        Some(samples)
+    }
+}
+
+fn extract_top_containers(raw: &[UpstreamContainerStats]) -> Option<Vec<ContainerSample>> {
+    if raw.is_empty() {
+        return None;
+    }
+    let mut list: Vec<ContainerSample> = raw
+        .iter()
+        .filter(|c| !c.n.is_empty())
+        .map(|c| ContainerSample {
+            name: c.n.clone(),
+            cpu_pct: c.c,
+            mem_mb: c.m,
+        })
+        .collect();
+    if list.is_empty() {
+        return None;
+    }
+    list.sort_by(|a, b| {
+        b.cpu_pct
+            .total_cmp(&a.cpu_pct)
+            .then_with(|| b.mem_mb.total_cmp(&a.mem_mb))
+    });
+    list.truncate(MAX_CONTAINERS);
+    Some(list)
 }
 
 fn gib_to_bytes(gib: f64) -> Option<u64> {
@@ -166,6 +369,13 @@ fn gib_to_bytes(gib: f64) -> Option<u64> {
         return None;
     }
     Some((gib * GIB_BYTES).round() as u64)
+}
+
+fn mib_to_bytes(mib: f64) -> Option<u64> {
+    if !mib.is_finite() || mib < 0.0 {
+        return None;
+    }
+    Some((mib * MIB_BYTES).round() as u64)
 }
 
 /// Build the PocketBase realtime subscription topic string for a Beszel system ID.
@@ -244,12 +454,61 @@ mod tests {
         assert_eq!(first.mem_buff_cache_bytes, Some(14_000_463_872));
         assert_eq!(first.swap_total_bytes, Some(8_589_930_496));
         assert_eq!(first.swap_used_bytes, Some(0));
+        assert_eq!(first.uptime_secs, Some(17_752));
+        assert_eq!(first.load_avg, Some([0.81, 0.76, 0.87]));
+        assert_eq!(first.temp_max_c, Some(44.75));
+        assert_eq!(first.battery_pct, Some(100));
+        assert_eq!(first.net_sent_bps, Some(9_001));
+        assert_eq!(first.net_recv_bps, Some(92_367));
+        assert_eq!(first.disk_pct, Some(6.94));
+        assert_eq!(first.disk_read_bps, Some(115_725));
+        assert_eq!(first.disk_write_bps, Some(3_857_418));
+        assert_eq!(first.unhealthy_pools, None);
 
         let second = fixture.samples[1]
             .to_live_sample(1_700_000_001_000)
             .expect("second sample should convert");
         assert_eq!(second.cpu_pct, 3.67);
         assert_eq!(second.mem_pct, 13.44);
+        assert_eq!(second.net_sent_bps, Some(2_155));
+        assert_eq!(second.net_recv_bps, Some(844));
+    }
+
+    #[test]
+    fn decodes_gpu_containers_and_degraded_pools() {
+        let raw = r#"{
+            "stats": {
+                "cpu": 25.0,
+                "mp": 40.0,
+                "g": {
+                    "0": {"n": "RTX 4060", "u": 62.5, "mu": 3072.0, "mt": 8192.0, "p": 88.4}
+                },
+                "z": {
+                    "pool1": {"n": "tank", "h": "DEGRADED"}
+                }
+            },
+            "container": [
+                {"n": "db", "c": 1.2, "m": 512.0},
+                {"n": "worker", "c": 18.5, "m": 256.0}
+            ]
+        }"#;
+        let payload: RtMetricsPayload = serde_json::from_str(raw).expect("parse");
+        let sample = payload.to_live_sample(99).expect("convert");
+
+        let gpus = sample.gpus.expect("gpu present");
+        assert_eq!(gpus.len(), 1);
+        assert_eq!(gpus[0].name, "RTX 4060");
+        assert_eq!(gpus[0].usage_pct, 62.5);
+        assert_eq!(gpus[0].power_w, Some(88.4));
+
+        let containers = sample.containers.expect("containers present");
+        assert_eq!(containers[0].name, "worker");
+        assert_eq!(containers[1].name, "db");
+
+        assert_eq!(
+            sample.unhealthy_pools,
+            Some(vec!["tank: DEGRADED".to_string()])
+        );
     }
 
     #[test]

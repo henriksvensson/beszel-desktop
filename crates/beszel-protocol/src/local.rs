@@ -44,8 +44,29 @@ pub struct SystemSummary {
     pub agent_version: Option<String>,
 }
 
-/// Single live (~1 Hz) CPU and memory sample stamped locally by `beszel-relay`.
+/// Single GPU telemetry snapshot within a `LiveSample`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GpuSample {
+    pub name: String,
+    pub usage_pct: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mem_used_mb: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mem_total_mb: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub power_w: Option<f64>,
+}
+
+/// Single Docker/Podman container telemetry snapshot within a `LiveSample`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContainerSample {
+    pub name: String,
+    pub cpu_pct: f64,
+    pub mem_mb: f64,
+}
+
+/// Single live (~1 Hz) system telemetry sample stamped locally by `beszel-relay`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct LiveSample {
     /// Local wall-clock receipt timestamp in milliseconds since Unix epoch.
     pub timestamp_ms: i64,
@@ -66,6 +87,48 @@ pub struct LiveSample {
     pub swap_used_bytes: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub swap_total_bytes: Option<u64>,
+    /// System uptime in seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uptime_secs: Option<u64>,
+    /// 1-, 5-, and 15-minute load averages.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub load_avg: Option<[f64; 3]>,
+    /// Highest/dashboard temperature in degrees Celsius.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temp_max_c: Option<f64>,
+    /// Battery charge percentage (`0..=100`), when present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub battery_pct: Option<u8>,
+    /// Aggregate network transmit rate in bytes/sec.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub net_sent_bps: Option<u64>,
+    /// Aggregate network receive rate in bytes/sec.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub net_recv_bps: Option<u64>,
+    /// Root filesystem utilization percent (`0.0..=100.0`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disk_pct: Option<f64>,
+    /// Root filesystem used space in GiB.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disk_used_gb: Option<f64>,
+    /// Root filesystem total space in GiB.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disk_total_gb: Option<f64>,
+    /// Aggregate disk read rate in bytes/sec.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disk_read_bps: Option<u64>,
+    /// Aggregate disk write rate in bytes/sec.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disk_write_bps: Option<u64>,
+    /// Storage pools reporting a health state other than `"ONLINE"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unhealthy_pools: Option<Vec<String>>,
+    /// Per-GPU live telemetry, when reported by the agent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gpus: Option<Vec<GpuSample>>,
+    /// Top active containers sorted by CPU then memory.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub containers: Option<Vec<ContainerSample>>,
 }
 
 /// Current live rolling window for one system delivered in initial snapshots.
@@ -91,7 +154,7 @@ pub enum RelayEvent {
     /// Incremental ~1 Hz live sample for a subscribed system.
     Sample {
         system_id: String,
-        sample: LiveSample,
+        sample: Box<LiveSample>,
     },
     /// Hub connection state transition.
     Connection { connection: ConnectionStatus },
@@ -146,6 +209,9 @@ mod tests {
                     mem_buff_cache_bytes: Some(14_000_463_872),
                     swap_used_bytes: Some(0),
                     swap_total_bytes: Some(8_589_930_496),
+                    net_sent_bps: Some(9_001),
+                    net_recv_bps: Some(92_367),
+                    ..LiveSample::default()
                 }],
             }],
         };
@@ -163,17 +229,12 @@ mod tests {
         let events = [
             RelayEvent::Sample {
                 system_id: "sys_example_01".into(),
-                sample: LiveSample {
+                sample: Box::new(LiveSample {
                     timestamp_ms: 1_700_000_006_000,
                     cpu_pct: 3.67,
-                    cpu_cores: None,
                     mem_pct: 13.44,
-                    mem_used_bytes: None,
-                    mem_total_bytes: None,
-                    mem_buff_cache_bytes: None,
-                    swap_used_bytes: None,
-                    swap_total_bytes: None,
-                },
+                    ..LiveSample::default()
+                }),
             },
             RelayEvent::Connection {
                 connection: ConnectionStatus {

@@ -298,7 +298,7 @@ fn apply_event_to_view(view: &mut ClientView, event: RelayEvent) {
             view.apply_snapshot(connection, mapped);
         }
         RelayEvent::Sample { system_id, sample } => {
-            view.update_sample(&system_id, sample);
+            view.update_sample(&system_id, *sample);
         }
         RelayEvent::Connection { connection } => {
             view.connection = Some(connection);

@@ -147,7 +147,7 @@ impl RelayState {
 
         let _ = self.tx.send(RelayEvent::Sample {
             system_id: system_id.to_string(),
-            sample,
+            sample: Box::new(sample),
         });
     }
 
@@ -209,13 +209,8 @@ mod tests {
         LiveSample {
             timestamp_ms: ts,
             cpu_pct: cpu,
-            cpu_cores: None,
             mem_pct: 25.0,
-            mem_used_bytes: None,
-            mem_total_bytes: None,
-            mem_buff_cache_bytes: None,
-            swap_used_bytes: None,
-            swap_total_bytes: None,
+            ..LiveSample::default()
         }
     }
 

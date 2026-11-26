@@ -142,13 +142,8 @@ mod tests {
         LiveSample {
             timestamp_ms,
             cpu_pct,
-            cpu_cores: None,
             mem_pct,
-            mem_used_bytes: None,
-            mem_total_bytes: None,
-            mem_buff_cache_bytes: None,
-            swap_used_bytes: None,
-            swap_total_bytes: None,
+            ..LiveSample::default()
         }
     }
 
