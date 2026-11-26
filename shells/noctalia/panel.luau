@@ -676,10 +676,6 @@ function onPinToBar()
         displayedHostId = selectedHostId,
       }
       noctalia.state.set(OPENED_SOURCE_KEY, openedSource)
-      noctalia.notify(
-        noctalia.tr("panel.title"),
-        noctalia.tr("panel.pinned_toast", { host = hostName })
-      )
       if isOpen then
         render()
       end
@@ -698,7 +694,6 @@ function onCopySetupCommand()
   end
   if noctalia.copyToClipboard(pendingCopyCommand, "text/plain") then
     copiedUntilMs = noctalia.nowMs() + 2500
-    noctalia.notify(noctalia.tr("panel.title"), noctalia.tr("panel.setup_copied_toast"))
     render()
   end
 end
