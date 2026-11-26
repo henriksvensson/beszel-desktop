@@ -15,24 +15,29 @@ Monitor remote servers, homelab nodes, and other machines live (~1 Hz) from a [B
 
 ## Requirements
 
-- Install [`beszel-relay`](https://github.com/henriksvensson/beszel-desktop) and `beszel-ctl` on `PATH` (or in `~/.local/bin/`).
-- Start the `beszel-relay` user service configured against a Beszel hub (`>= 0.13.0`). See [packaging/README.md](../../packaging/README.md).
+- [`beszel-relay` and `beszel-ctl`](https://github.com/henriksvensson/beszel-desktop) installed on `PATH` (or in `~/.local/bin/`) and connected to a Beszel hub (`>= 0.13.0`).
+  - Quick install & setup (downloads SHA-256-verified binaries and launches `beszel-ctl init`):
+    ```sh
+    curl -fsSL https://raw.githubusercontent.com/henriksvensson/beszel-desktop/main/packaging/install.sh | sh
+    ```
+  - Or install via Nix / Cargo / [GitHub Releases](https://github.com/henriksvensson/beszel-desktop/releases), then run `beszel-ctl init`.
 - Noctalia Shell `v5.5+` (`plugin_api = 48`).
 
 ## Usage
 
-1. Install and enable `henriksvensson/beszel-desktop` in **Noctalia Settings → Plugins** (or install manually by linking `shells/noctalia` to `~/.local/share/noctalia/plugins/beszel-desktop`).
-2. Add one or more independent host widgets to your bar in `~/.config/noctalia/config.toml`:
-   ```toml
-   [widget.beszel-workstation]
-   type = "henriksvensson/beszel-desktop:bar"
-   system = "workstation"
+1. Install and enable `henriksvensson/beszel-desktop` in **Noctalia Settings → Plugins** (or link `shells/noctalia` into `~/.local/share/noctalia/plugins/beszel-desktop` for local development).
+2. Add **Beszel Desktop** to your bar in **Noctalia Settings → Bar**.
+   - If `beszel-relay` isn't installed or configured yet, clicking the bar widget opens an onboarding card where you can copy the install & setup command in one click; the widget connects automatically as soon as `beszel-ctl init` completes.
+   - To pin multiple remote hosts side by side on your bar, add multiple widget instances and set each instance's **Host filter** (`system`) in the widget settings UI (or in `~/.config/noctalia/config.toml`):
+     ```toml
+     [widget.beszel-workstation]
+     type = "henriksvensson/beszel-desktop:bar"
+     system = "workstation"
 
-   [widget.beszel-server]
-   type = "henriksvensson/beszel-desktop:bar"
-   system = "server"
-   ```
-   Then add `"beszel-workstation"` / `"beszel-server"` to your bar's widget list.
+     [widget.beszel-server]
+     type = "henriksvensson/beszel-desktop:bar"
+     system = "server"
+     ```
 3. Click any host pill to open the attached telemetry panel focused on that host (with host switcher chips, hover-scrubbable CPU & memory graphs, and a frame-interpolated per-core CPU heatmap), or toggle the panel via IPC:
 
 ```sh

@@ -1,4 +1,5 @@
 mod format;
+mod init;
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -27,6 +28,8 @@ struct Args {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Interactive setup wizard: configure hub credentials and start beszel-relay.
+    Init(init::InitArgs),
     /// Connect, print the current snapshot and history count, then exit.
     Status,
     /// Stream live updates from beszel-relay.
@@ -61,6 +64,7 @@ async fn main() -> Result<()> {
     let socket_path = args.socket.unwrap_or_else(default_socket_path);
 
     match args.command {
+        Command::Init(opts) => init::run_init(opts, &socket_path).await,
         Command::Status => run_status(&socket_path).await,
         Command::Watch { raw, reconnect } => run_watch(&socket_path, raw, reconnect).await,
         Command::Waybar {

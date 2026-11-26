@@ -32,49 +32,39 @@ Monitor **remote servers, homelab nodes, and other machines** live (~1 Hz) right
 ### Prerequisites
 
 - A [Beszel](https://beszel.dev) hub and agents running `>= 0.13.0` (verified on `0.21.2`).
-- Rust toolchain (`cargo`) to build from source (or prebuilt Linux tarballs from [GitHub Releases](https://github.com/henriksvensson/beszel-desktop/releases)).
-- `systemd >= 256` recommended for encrypted user credentials (`password_file` and environment variables are also supported).
+- Linux `x86_64` or `aarch64` (`systemd >= 256` enables TPM2/host-key encrypted credentials via `systemd-creds`; older systemd such as Ubuntu 24.04's `systemd 255` automatically falls back to a `0600` credential file).
 
-### 1. Build and install the daemon & CLI
+### 1. Install and configure `beszel-relay` + `beszel-ctl`
 
-```sh
-git clone https://github.com/henriksvensson/beszel-desktop.git
-cd beszel-desktop
-cargo build --release --workspace
-install -Dm755 target/release/beszel-relay ~/.local/bin/beszel-relay
-install -Dm755 target/release/beszel-ctl ~/.local/bin/beszel-ctl
-```
-
-### 2. Configure your Beszel hub and encrypt your password
+**One-command install & setup (downloads SHA-256-verified binaries from [GitHub Releases](https://github.com/henriksvensson/beszel-desktop/releases) and runs `beszel-ctl init`):**
 
 ```sh
-install -dm700 ~/.config/beszel-desktop
-install -Dm600 packaging/config.example.toml ~/.config/beszel-desktop/config.toml
-$EDITOR ~/.config/beszel-desktop/config.toml
+curl -fsSL https://raw.githubusercontent.com/henriksvensson/beszel-desktop/main/packaging/install.sh | sh
 ```
 
-Set `hub_url` and `email` in `config.toml`, then store your Beszel password encrypted with `systemd-creds` (no plaintext password in `config.toml`):
+Prefer to install via a package manager or from source?
+
+- **Nix:** `nix profile install github:henriksvensson/beszel-desktop && beszel-ctl init`
+- **From source:**
+  ```sh
+  git clone https://github.com/henriksvensson/beszel-desktop.git
+  cd beszel-desktop
+  cargo build --release --workspace
+  install -Dm755 target/release/beszel-relay ~/.local/bin/beszel-relay
+  install -Dm755 target/release/beszel-ctl ~/.local/bin/beszel-ctl
+  ~/.local/bin/beszel-ctl init
+  ```
+
+`beszel-ctl init` prompts for your Beszel hub URL, email, and password (hidden), verifies login and lists discovered hosts, stores credentials securely (`systemd-creds` on systemd >= 256 or a `0600` file via `LoadCredential=` on older systemd), and enables `beszel-relay.service`.
+
+Verify the live stream locally at any time:
 
 ```sh
-systemd-creds encrypt --user --name=beszel-password - ~/.config/beszel-desktop/beszel-password.cred
+beszel-ctl status
+beszel-ctl watch
 ```
 
-### 3. Enable the systemd user service
-
-```sh
-install -Dm644 packaging/systemd/beszel-relay.service ~/.config/systemd/user/beszel-relay.service
-systemctl --user daemon-reload
-systemctl --user enable --now beszel-relay.service
-```
-
-Verify the live stream locally:
-
-```sh
-~/.local/bin/beszel-ctl status
-~/.local/bin/beszel-ctl watch
-```
-
-### 4. Add a desktop widget
+### 2. Add a desktop widget
 
 Follow the setup guide for your shell:
 
@@ -82,7 +72,7 @@ Follow the setup guide for your shell:
 - **Noctalia Shell v5:** [shells/noctalia/README.md](shells/noctalia/README.md)
 - **Waybar:** [shells/waybar/README.md](shells/waybar/README.md)
 
-See [packaging/README.md](packaging/README.md) and [packaging/config.example.toml](packaging/config.example.toml) for alternative credential methods (`BESZEL_PASSWORD_FILE`, `password_file`) and host filtering options.
+See [packaging/README.md](packaging/README.md) and [packaging/config.example.toml](packaging/config.example.toml) for manual setup, alternative credential methods (`BESZEL_PASSWORD_FILE`, `password_file`), and host filtering options.
 
 ## Architecture
 

@@ -14,9 +14,11 @@ categories.workspace = true
 anyhow.workspace = true
 beszel-protocol.workspace = true
 clap.workspace = true
+reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
+toml.workspace = true
 
 [lints]
 workspace = true

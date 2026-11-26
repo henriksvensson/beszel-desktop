@@ -1,12 +1,26 @@
 # Packaging & User Service Setup
 
-Install `beszel-relay` and `beszel-ctl` for your user:
+## Quick Install & Setup
+
+Download SHA-256-verified release binaries into `~/.local/bin` and launch the interactive `beszel-ctl init` wizard:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/henriksvensson/beszel-desktop/main/packaging/install.sh | sh
+```
+
+Pass `--no-init` to install binaries without running `beszel-ctl init`, or `--version v0.1.0` to pin a release tag.
+
+## Manual Build & Setup
+
+Install `beszel-relay` and `beszel-ctl` from source:
 
 ```sh
 cargo build --release --workspace
 install -Dm755 target/release/beszel-relay ~/.local/bin/beszel-relay
 install -Dm755 target/release/beszel-ctl ~/.local/bin/beszel-ctl
 ```
+
+Run the interactive wizard (`~/.local/bin/beszel-ctl init`), or configure manually:
 
 Create a user-only config file (no plaintext password needed):
 

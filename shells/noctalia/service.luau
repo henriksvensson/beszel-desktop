@@ -14,6 +14,7 @@ local systems = {}
 local historyBySystem = {}
 local historyCapacity = 60
 local activeCommand = nil
+local ctlMissing = false
 
 local function shellQuote(str)
   return "'" .. string.gsub(str, "'", "'\\''") .. "'"
@@ -25,20 +26,25 @@ local function resolveCtlBinary()
     configured = "beszel-ctl"
   end
   if string.find(configured, "/", 1, true) ~= nil then
-    return noctalia.expandPath(configured)
+    local expanded = noctalia.expandPath(configured)
+    return expanded, noctalia.fileExists(expanded)
   end
   if noctalia.commandExists(configured) then
-    return configured
+    return configured, true
   end
   local localBin = noctalia.expandPath("~/.local/bin/" .. configured)
   if noctalia.fileExists(localBin) then
-    return localBin
+    return localBin, true
   end
-  return configured
+  local cargoBin = noctalia.expandPath("~/.cargo/bin/" .. configured)
+  if noctalia.fileExists(cargoBin) then
+    return cargoBin, true
+  end
+  return configured, false
 end
 
-local function buildStreamCommand()
-  local parts = { shellQuote(resolveCtlBinary()) }
+local function buildStreamCommand(binPath)
+  local parts = { shellQuote(binPath) }
   local socketPath = noctalia.string.trim(noctalia.getConfig("socket_path") or "")
   if socketPath ~= "" then
     table.insert(parts, "--socket")
@@ -56,6 +62,7 @@ local function publish()
     systems = systems,
     historyBySystem = historyBySystem,
     historyCapacity = historyCapacity,
+    ctlMissing = ctlMissing,
     updatedAtMs = noctalia.nowMs(),
   })
 end
@@ -133,8 +140,25 @@ local function onRelayLine(rawLine)
 end
 
 local function startStream()
-  local cmd = buildStreamCommand()
+  local binPath, found = resolveCtlBinary()
+  if not found then
+    ctlMissing = true
+    activeCommand = nil
+    connection = {
+      state = "disconnected",
+      since_ms = noctalia.nowMs(),
+      last_error = nil,
+      reconnect_attempts = 0,
+    }
+    noctalia.setUpdateInterval(5000)
+    publish()
+    return
+  end
+
+  ctlMissing = false
+  local cmd = buildStreamCommand(binPath)
   activeCommand = cmd
+  noctalia.setUpdateInterval(60000)
   local ok = noctalia.runStream(cmd, onRelayLine)
   if not ok then
     connection = {
@@ -147,9 +171,25 @@ local function startStream()
   end
 end
 
+function update()
+  if ctlMissing then
+    local _, found = resolveCtlBinary()
+    if found then
+      startStream()
+    end
+  end
+end
+
 function onConfigChanged()
-  local nextCmd = buildStreamCommand()
-  if nextCmd ~= activeCommand then
+  local binPath, found = resolveCtlBinary()
+  if not found then
+    if not ctlMissing then
+      startStream()
+    end
+    return
+  end
+  local nextCmd = buildStreamCommand(binPath)
+  if ctlMissing or nextCmd ~= activeCommand then
     startStream()
   end
 end

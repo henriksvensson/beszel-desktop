@@ -8,10 +8,15 @@ local fmt = require("./lib/format.luau")
 local STATE_KEY = "beszel.data"
 local SELECTED_HOST_KEY = "beszel.selected_host"
 local CORE_BAR_HEIGHT = 22
+local INSTALL_COMMAND =
+  "curl -fsSL https://raw.githubusercontent.com/henriksvensson/beszel-desktop/main/packaging/install.sh | sh"
+local INIT_COMMAND = "beszel-ctl init"
 
 local data = noctalia.state.get(STATE_KEY)
 local selectedHostId = noctalia.state.get(SELECTED_HOST_KEY)
 local isOpen = false
+local copiedUntilMs = 0
+local pendingCopyCommand = nil
 
 local hoveredCpuIndex = nil
 local hoveredMemIndex = nil
@@ -237,6 +242,91 @@ local function buildCoreHeatmap(warnPct, dangerPct)
   })
 end
 
+local function buildOnboardingCard(state)
+  local isMissing = type(data) == "table" and data.ctlMissing == true
+  local isCopied = noctalia.nowMs() < copiedUntilMs
+
+  if isMissing or state == "disconnected" or state == "error" then
+    local headingKey = isMissing and "panel.setup_install_title"
+      or (state == "error" and "panel.setup_auth_title" or "panel.setup_init_title")
+    local descKey = isMissing and "panel.setup_install_desc"
+      or (state == "error" and "panel.setup_auth_desc" or "panel.setup_init_desc")
+    local cmd = isMissing and INSTALL_COMMAND or INIT_COMMAND
+    local btnKey = isCopied and "panel.setup_copied"
+      or (isMissing and "panel.setup_copy_install" or "panel.setup_copy_init")
+
+    pendingCopyCommand = cmd
+
+    local children = {
+      ui.label({
+        text = noctalia.tr(headingKey),
+        fontSize = 13,
+        fontWeight = "semibold",
+        color = "on_surface",
+      }),
+      ui.label({
+        text = noctalia.tr(descKey),
+        fontSize = 12,
+        color = "on_surface_variant",
+        maxLines = 4,
+      }),
+      ui.column({
+        paddingH = 10,
+        paddingV = 8,
+        radius = 6,
+        fill = "surface_container_highest",
+      }, {
+        ui.label({
+          text = cmd,
+          fontSize = 11,
+          fontFamily = "monospace",
+          color = "on_surface",
+          maxLines = 3,
+        }),
+      }),
+      ui.button({
+        text = noctalia.tr(btnKey),
+        glyph = isCopied and "check" or "copy",
+        glyphSize = 14,
+        variant = "primary",
+        controlSize = "sm",
+        onClick = "onCopySetupCommand",
+      }),
+    }
+
+    if isMissing then
+      table.insert(children, ui.label({
+        text = noctalia.tr("panel.setup_alt"),
+        fontSize = 11,
+        color = "on_surface_variant",
+        maxLines = 2,
+      }))
+    end
+
+    return ui.column({
+      gap = 10,
+      padding = 12,
+      radius = 8,
+      fill = "surface_container_high",
+    }, children)
+  end
+
+  pendingCopyCommand = nil
+  return ui.column({
+    padding = 16,
+    radius = 8,
+    fill = "surface_container_high",
+    align = "center",
+  }, {
+    ui.label({
+      text = noctalia.tr("panel.empty"),
+      fontSize = 12,
+      color = "on_surface_variant",
+      maxLines = 2,
+    }),
+  })
+end
+
 render = function()
   if not isOpen then
     return
@@ -296,18 +386,7 @@ render = function()
   end
 
   if latest == nil then
-    table.insert(body, ui.column({
-      padding = 16,
-      radius = 8,
-      fill = "surface_container_high",
-      align = "center",
-    }, {
-      ui.label({
-        text = noctalia.tr("panel.empty"),
-        fontSize = 12,
-        color = "on_surface_variant",
-      }),
-    }))
+    table.insert(body, buildOnboardingCard(state))
     panel.render(ui.column({ gap = 12, padding = 12 }, body))
     return
   end
@@ -468,6 +547,17 @@ end
 
 function onOpenSettings()
   noctalia.openSettings()
+end
+
+function onCopySetupCommand()
+  if type(pendingCopyCommand) ~= "string" or pendingCopyCommand == "" then
+    return
+  end
+  if noctalia.copyToClipboard(pendingCopyCommand, "text/plain") then
+    copiedUntilMs = noctalia.nowMs() + 2500
+    noctalia.notify(noctalia.tr("panel.title"), noctalia.tr("panel.setup_copied_toast"))
+    render()
+  end
 end
 
 function onFrameTick(deltaMs)
