@@ -138,6 +138,9 @@ impl RelayState {
         let sample_ts = sample.timestamp_ms;
 
         if let Some(entry) = guard.systems.get_mut(system_id) {
+            if let Some(prev) = entry.samples.back_mut() {
+                compact_historical_sample(prev);
+            }
             if entry.samples.len() >= capacity {
                 entry.samples.pop_front();
             }
@@ -171,6 +174,13 @@ impl RelayState {
             connection: guard.connection.clone(),
         });
     }
+}
+
+/// Strip latest-only heavy fields from historical samples so snapshots stay compact.
+fn compact_historical_sample(sample: &mut LiveSample) {
+    sample.cpu_cores = None;
+    sample.containers = None;
+    sample.unhealthy_pools = None;
 }
 
 fn build_snapshot(inner: &InnerState, generated_at_ms: i64) -> RelayEvent {

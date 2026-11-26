@@ -106,6 +106,12 @@ local function applySample(systemId, sample)
     list = {}
     historyBySystem[systemId] = list
   end
+  local prev = list[#list]
+  if type(prev) == "table" then
+    prev.cpu_cores = nil
+    prev.containers = nil
+    prev.unhealthy_pools = nil
+  end
   table.insert(list, sample)
   while #list > historyCapacity do
     table.remove(list, 1)

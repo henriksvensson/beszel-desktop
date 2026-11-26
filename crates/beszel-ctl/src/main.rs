@@ -2,19 +2,23 @@ mod format;
 mod init;
 mod update;
 
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
 use beszel_protocol::default_socket_path;
 use beszel_protocol::local::{
-    ConnectionState, ConnectionStatus, RelayEvent, decode_ndjson, encode_ndjson,
+    ConnectionState, ConnectionStatus, RelayEvent, SystemLiveState, decode_ndjson, encode_ndjson,
 };
 use clap::{Parser, Subcommand};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::net::UnixStream;
 
 use crate::format::{ClientView, WaybarOptions, format_watch_sample, format_waybar, state_label};
+
+/// Keep each `--raw` NDJSON stdout line well under downstream stream buffers (e.g. 64 KiB).
+const MAX_RAW_LINE_BYTES: usize = 32 * 1024;
 
 #[derive(Debug, Parser)]
 #[command(name = "beszel-ctl", about = "Local socket client for beszel-relay")]
@@ -157,13 +161,89 @@ async fn watch_single_connection(socket_path: &Path, raw: bool) -> Result<()> {
 
     while let Some(line) = lines.next_line().await? {
         if raw {
-            println!("{line}");
+            if !emit_raw_line(&line)? {
+                return Ok(());
+            }
             continue;
         }
         let event = decode_ndjson(&line).context("failed to decode relay event")?;
         print_watch_event(event, &mut system_names);
     }
     Ok(())
+}
+
+fn emit_raw_line(line: &str) -> Result<bool> {
+    if line.len() <= MAX_RAW_LINE_BYTES {
+        return write_stdout_line(line);
+    }
+    let Ok(RelayEvent::Snapshot {
+        protocol_version,
+        generated_at_ms,
+        connection,
+        systems,
+    }) = decode_ndjson(line)
+    else {
+        return write_stdout_line(line);
+    };
+
+    emit_split_snapshot(protocol_version, generated_at_ms, connection, systems)
+}
+
+fn emit_split_snapshot(
+    protocol_version: u32,
+    generated_at_ms: i64,
+    connection: ConnectionStatus,
+    systems: Vec<SystemLiveState>,
+) -> Result<bool> {
+    let mut deferred = Vec::new();
+    let header_systems = systems
+        .into_iter()
+        .map(|mut entry| {
+            let samples = std::mem::take(&mut entry.samples);
+            deferred.push((entry.system.id.clone(), samples));
+            entry
+        })
+        .collect();
+
+    let header = RelayEvent::Snapshot {
+        protocol_version,
+        generated_at_ms,
+        connection,
+        systems: header_systems,
+    };
+    if !write_stdout_raw(&encode_ndjson(&header)?)? {
+        return Ok(false);
+    }
+    for (system_id, samples) in deferred {
+        for sample in samples {
+            let event = RelayEvent::Sample {
+                system_id: system_id.clone(),
+                sample: Box::new(sample),
+            };
+            if !write_stdout_raw(&encode_ndjson(&event)?)? {
+                return Ok(false);
+            }
+        }
+    }
+    Ok(true)
+}
+
+fn write_stdout_line(line: &str) -> Result<bool> {
+    let mut out = io::stdout().lock();
+    match writeln!(out, "{line}") {
+        Ok(()) => Ok(true),
+        Err(err) if err.kind() == io::ErrorKind::BrokenPipe => Ok(false),
+        Err(err) => Err(err.into()),
+    }
+}
+
+fn write_stdout_raw(text: &str) -> Result<bool> {
+    let mut out = io::stdout().lock();
+    match out.write_all(text.as_bytes()).and_then(|()| out.flush()) {
+        Ok(()) => Ok(true),
+        Err(err) if err.kind() == io::ErrorKind::BrokenPipe => Ok(false),
+        Err(err) => Err(err.into()),
+    }
 }
 
 fn emit_watch_disconnected(raw: bool, message: String) -> Result<()> {
