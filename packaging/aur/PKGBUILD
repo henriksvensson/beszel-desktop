@@ -8,6 +8,7 @@ url="https://github.com/henriksvensson/beszel-desktop"
 license=('MIT')
 depends=('glibc' 'gcc-libs')
 makedepends=('cargo')
+options=('!lto')
 source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
 sha256sums=('492d504ad17f5955897490260d9680e90f43c3d33adbe1fa850401f891e0905b')
 

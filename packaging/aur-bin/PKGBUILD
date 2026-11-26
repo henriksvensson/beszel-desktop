@@ -1,0 +1,36 @@
+# Maintainer: Henrik Svensson <1612710+henriksvensson@users.noreply.github.com>
+pkgname=beszel-desktop-bin
+pkgver=0.3.0
+pkgrel=1
+pkgdesc="Live Beszel metrics daemon (beszel-relay), CLI (beszel-ctl), and Wayland shell widgets (prebuilt binaries)"
+arch=('x86_64' 'aarch64')
+url="https://github.com/henriksvensson/beszel-desktop"
+license=('MIT')
+depends=('glibc' 'gcc-libs')
+provides=('beszel-desktop')
+conflicts=('beszel-desktop')
+source_x86_64=("${url}/releases/download/v${pkgver}/beszel-desktop-v${pkgver}-x86_64-unknown-linux-gnu.tar.gz")
+source_aarch64=("${url}/releases/download/v${pkgver}/beszel-desktop-v${pkgver}-aarch64-unknown-linux-gnu.tar.gz")
+sha256sums_x86_64=('52315abb2e0687656d674ef37a63ee0c373aab92f9b71b3fe6b6453c5c8538a3')
+sha256sums_aarch64=('1e19ac5ff608ba86be9bc74b92514aec3fe1b8ea61bff4f5ecc8f47c768c21be')
+
+package() {
+    local target
+    case "${CARCH}" in
+        x86_64)  target="x86_64-unknown-linux-gnu" ;;
+        aarch64) target="aarch64-unknown-linux-gnu" ;;
+    esac
+
+    cd "beszel-desktop-v${pkgver}-${target}"
+    install -Dm755 beszel-relay "${pkgdir}/usr/bin/beszel-relay"
+    install -Dm755 beszel-ctl "${pkgdir}/usr/bin/beszel-ctl"
+
+    install -dm755 "${pkgdir}/usr/lib/systemd/user"
+    sed 's|%h/.local/bin/beszel-relay|/usr/bin/beszel-relay|g' \
+        beszel-relay.service \
+        > "${pkgdir}/usr/lib/systemd/user/beszel-relay.service"
+
+    install -Dm644 config.example.toml "${pkgdir}/usr/share/doc/${pkgname}/config.example.toml"
+    install -Dm644 README.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
+    install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}
