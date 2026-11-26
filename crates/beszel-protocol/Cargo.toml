@@ -1,0 +1,18 @@
+[package]
+name = "beszel-protocol"
+description = "Shared wire types for Beszel realtime SSE payloads and the local beszel-relay NDJSON socket protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

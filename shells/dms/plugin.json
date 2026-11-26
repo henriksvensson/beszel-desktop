@@ -1,0 +1,17 @@
+{
+  "id": "beszelDesktop",
+  "name": "Beszel Desktop",
+  "description": "Live Beszel CPU and memory metrics streamed from the local beszel-relay daemon",
+  "version": "0.1.0",
+  "author": "henriksvensson",
+  "license": "MIT",
+  "type": "widget",
+  "icon": "monitoring",
+  "component": "./BeszelWidget.qml",
+  "settings": "./BeszelSettings.qml",
+  "permissions": [
+    "settings_read",
+    "settings_write"
+  ],
+  "requires_dms": ">=2.0.0"
+}

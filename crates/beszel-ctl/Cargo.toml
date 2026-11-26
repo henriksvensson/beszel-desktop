@@ -1,0 +1,22 @@
+[package]
+name = "beszel-ctl"
+description = "Local Unix socket CLI and Waybar/shell stream adapter for beszel-relay"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+beszel-protocol.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

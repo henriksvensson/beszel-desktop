@@ -1,0 +1,25 @@
+# Example configuration for beszel-relay.
+# Copy to ~/.config/beszel-desktop/config.toml (chmod 600) and fill in hub_url and email.
+#
+# Password resolution order (recommended: systemd encrypted credentials):
+#   1. BESZEL_PASSWORD environment variable
+#   2. BESZEL_PASSWORD_FILE environment variable
+#   3. $CREDENTIALS_DIRECTORY/beszel-password (via LoadCredentialEncrypted= in beszel-relay.service)
+#   4. password_file below
+#   5. password below (plaintext fallback, not recommended)
+
+hub_url = "https://beszel.example.com"
+email = "you@example.com"
+
+# Optional: read password from a file if not using systemd LoadCredentialEncrypted=.
+# password_file = "~/.config/beszel-desktop/password"
+
+# Optional: restrict subscriptions to one or more comma-separated system IDs or names.
+# When omitted, beszel-relay subscribes to all "up" systems accessible to the account.
+# system = "workstation,server"
+
+# Optional: override the local Unix socket path (defaults to $XDG_RUNTIME_DIR/beszel-relay.sock).
+# socket_path = "/run/user/1000/beszel-relay.sock"
+
+# Optional: maximum live (~1 Hz) samples retained per system in memory (default: 60).
+history_capacity = 60

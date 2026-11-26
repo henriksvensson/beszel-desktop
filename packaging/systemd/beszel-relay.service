@@ -1,0 +1,16 @@
+[Unit]
+Description=Beszel Relay per-user realtime metrics daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/beszel-relay
+LoadCredentialEncrypted=beszel-password:%h/.config/beszel-desktop/beszel-password.cred
+Restart=on-failure
+RestartSec=3
+UMask=0077
+Environment=RUST_LOG=info
+
+[Install]
+WantedBy=default.target

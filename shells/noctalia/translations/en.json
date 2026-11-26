@@ -1,0 +1,58 @@
+{
+  "panel": {
+    "cores": "Cores",
+    "cores_hover": "Core {index}  {pct}%",
+    "cores_summary": "{count} cores  Peak {peak}%",
+    "cpu": "CPU",
+    "empty": "Waiting for live metrics from beszel-relay.",
+    "memory": "Memory",
+    "open_settings": "Plugin settings",
+    "title": "Beszel Desktop"
+  },
+  "settings": {
+    "ctl_path": {
+      "description": "Path to the beszel-ctl binary (falls back to ~/.local/bin/beszel-ctl when omitted from PATH).",
+      "label": "beszel-ctl binary"
+    },
+    "danger_threshold": {
+      "description": "Highlight CPU, memory, and core bars in error color at or above this percentage.",
+      "label": "Danger threshold (%)"
+    },
+    "show_host_name": {
+      "description": "Show the Beszel host name next to the CPU and memory metrics in the bar.",
+      "label": "Show host name"
+    },
+    "socket_path": {
+      "description": "Optional override for the beszel-relay Unix socket path. Leave empty for $XDG_RUNTIME_DIR/beszel-relay.sock.",
+      "label": "Relay socket path"
+    },
+    "stale_seconds": {
+      "description": "Mark live metrics stale when no sample arrives within this many seconds.",
+      "label": "Stale threshold (seconds)"
+    },
+    "system": {
+      "description": "Beszel host name or system ID to display in this bar widget. Leave empty for the first host.",
+      "label": "Host filter"
+    },
+    "warn_threshold": {
+      "description": "Highlight CPU, memory, and core bars in warning color at or above this percentage.",
+      "label": "Warning threshold (%)"
+    }
+  },
+  "state": {
+    "auth_error": "Authentication error",
+    "connected": "Live",
+    "connecting": "Connecting",
+    "disconnected": "Relay offline",
+    "not_found": "{host} not found",
+    "paused": "Paused",
+    "reconnecting": "Reconnecting",
+    "stale": "Stale"
+  },
+  "tooltip": {
+    "cpu": "CPU",
+    "host": "Host",
+    "memory": "Memory",
+    "status": "Status"
+  }
+}

@@ -1,0 +1,36 @@
+[workspace]
+resolver = "3"
+members = [
+  "crates/beszel-protocol",
+  "crates/beszel-relay",
+  "crates/beszel-ctl",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/henriksvensson/beszel-desktop"
+homepage = "https://github.com/henriksvensson/beszel-desktop"
+readme = "README.md"
+keywords = ["beszel", "monitoring", "wayland", "waybar", "desktop"]
+categories = ["command-line-utilities", "os::linux-apis"]
+
+[workspace.dependencies]
+anyhow = "1"
+beszel-protocol = { version = "0.1.0", path = "crates/beszel-protocol" }
+clap = { version = "4", features = ["derive"] }
+futures-util = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }

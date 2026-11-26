@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+
+PATH="$HOME/.local/bin:$PATH"
+
+if command -v cs >/dev/null 2>&1 && git rev-parse --verify HEAD >/dev/null 2>&1; then
+    CS_DISABLE_VERSION_CHECK=1 cs delta --git-hook --staged
+fi

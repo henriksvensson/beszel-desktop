@@ -1,0 +1,22 @@
+/* Merge into ~/.config/waybar/style.css */
+
+#custom-beszel {
+  padding: 0 10px;
+}
+
+#custom-beszel.connected {
+  opacity: 1;
+}
+
+#custom-beszel.connecting,
+#custom-beszel.reconnecting,
+#custom-beszel.stale,
+#custom-beszel.warning {
+  color: #f9e2af;
+}
+
+#custom-beszel.disconnected,
+#custom-beszel.error,
+#custom-beszel.danger {
+  color: #f38ba8;
+}

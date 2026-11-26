@@ -1,0 +1,13 @@
+// Add "custom/beszel" to your Waybar modules-left / modules-center / modules-right list
+// and merge this module block into ~/.config/waybar/config.jsonc.
+{
+  "custom/beszel": {
+    "exec": "beszel-ctl waybar",
+    // Optional flags:
+    // "exec": "beszel-ctl waybar --system workstation --stale-secs 5",
+    "return-type": "json",
+    "restart-interval": 3,
+    "escape": true,
+    "tooltip": true
+  }
+}
