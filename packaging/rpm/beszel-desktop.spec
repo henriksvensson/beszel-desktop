@@ -1,5 +1,5 @@
 Name:           beszel-desktop
-Version:        0.5.0
+Version:        0.5.1
 Release:        1%{?dist}
 Summary:        Live Beszel metrics daemon, CLI, and Wayland desktop shell widgets
 
@@ -48,6 +48,9 @@ cp -r shells/dms shells/noctalia shells/waybar %{buildroot}%{_datadir}/%{name}/s
 %{_datadir}/%{name}/shells/
 
 %changelog
+* Fri Nov 27 2026 Henrik Svensson <1612710+henriksvensson@users.noreply.github.com> - 0.5.1-1
+- Polish Noctalia offline/stale states: hide stale metrics & hover tooltip when Beszel relay is offline, deduplicate multiple offline bar pills to a single indicator, and add an amber ticking banner with muted readouts during transient reconnects
+
 * Fri Nov 27 2026 Henrik Svensson <1612710+henriksvensson@users.noreply.github.com> - 0.5.0-1
 - Mirror Beszel hub alerts live (bar badge, panel banner, desktop notifications), add `beszel-ctl alerts` CLI with non-destructive `--defaults` setup and 1-click Noctalia panel trigger, and stabilize tooltip width
 

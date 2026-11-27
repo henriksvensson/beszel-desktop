@@ -7,7 +7,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.5.0"
+version = "0.5.1"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/henriksvensson/beszel-desktop"
@@ -18,7 +18,7 @@ categories = ["command-line-utilities", "os::linux-apis"]
 
 [workspace.dependencies]
 anyhow = "1"
-beszel-protocol = { version = "0.5.0", path = "crates/beszel-protocol" }
+beszel-protocol = { version = "0.5.1", path = "crates/beszel-protocol" }
 clap = { version = "4", features = ["derive"] }
 futures-util = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
