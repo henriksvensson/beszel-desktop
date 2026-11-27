@@ -1319,7 +1319,14 @@ render = function()
   local alerts = (not hardOffline and sys ~= nil) and fmt.alertsForSystem(data, sys.id) or {}
   local alertsBanner = buildAlertsBanner(alerts)
 
-  if hardOffline or latest == nil then
+  if hardOffline then
+    panel.render(ui.column({ flexGrow = 1 }, {
+      buildOnboardingCard(state, hadData),
+    }))
+    return
+  end
+
+  if latest == nil then
     local emptyBody = { header }
     if alertsBanner ~= nil then
       table.insert(emptyBody, alertsBanner)

@@ -401,12 +401,13 @@ local function render()
       setWidgetVisible(false)
       return
     end
+    setWidgetVisible(true)
+    barWidget.clearTooltip()
   else
     releaseOfflineOwner()
+    setWidgetVisible(true)
+    barWidget.setTooltip(buildTooltip(sys, latest, state, effectiveFilter, alerts))
   end
-  setWidgetVisible(true)
-
-  barWidget.setTooltip(buildTooltip(sys, latest, state, effectiveFilter, alerts))
 
   local showMetrics = latest ~= nil
     and not hardOffline
