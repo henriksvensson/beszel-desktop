@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::local::{ContainerSample, DiskSample, GpuSample, LiveSample};
+use crate::local::{ActiveAlert, ContainerSample, DiskSample, GpuSample, LiveSample};
 
 const GIB_BYTES: f64 = 1024.0 * 1024.0 * 1024.0;
 const MIB_BYTES: f64 = 1024.0 * 1024.0;
@@ -14,11 +14,64 @@ const MAX_EXTRA_DISKS: usize = 6;
 /// PocketBase realtime topic for watching changes to the `systems` collection.
 pub const SYSTEMS_COLLECTION_TOPIC: &str = "systems/*";
 
+/// PocketBase realtime topic for watching changes to the `alerts` collection.
+pub const ALERTS_COLLECTION_TOPIC: &str = "alerts/*";
+
 /// PocketBase realtime event payload emitted for `systems/*`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct SystemsRealtimeEvent {
     pub action: String,
     pub record: UpstreamSystemRecord,
+}
+
+/// PocketBase `GET /api/collections/alerts/records` paginated response.
+#[derive(Debug, Clone, Deserialize)]
+pub struct AlertsListResponse {
+    #[serde(default)]
+    pub items: Vec<UpstreamAlertRecord>,
+}
+
+/// PocketBase realtime event payload emitted for `alerts/*`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct AlertsRealtimeEvent {
+    pub action: String,
+    pub record: UpstreamAlertRecord,
+}
+
+/// Alert record returned by Beszel's `alerts` collection.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct UpstreamAlertRecord {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub system: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub triggered: bool,
+    #[serde(default)]
+    pub value: Option<f64>,
+    #[serde(default)]
+    pub min: Option<u32>,
+}
+
+impl UpstreamAlertRecord {
+    /// Convert a triggered upstream alert into a local `ActiveAlert`.
+    pub fn to_active_alert(&self) -> Option<ActiveAlert> {
+        if !self.triggered {
+            return None;
+        }
+        if self.system.is_empty() || self.name.is_empty() {
+            return None;
+        }
+        Some(ActiveAlert {
+            id: self.id.clone(),
+            system_id: self.system.clone(),
+            name: self.name.clone(),
+            value: self.value.filter(|v| v.is_finite() && *v > 0.0),
+            min: self.min.filter(|m| *m > 0),
+        })
+    }
 }
 
 /// PocketBase `POST /api/collections/users/auth-with-password` response.

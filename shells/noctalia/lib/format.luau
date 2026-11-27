@@ -244,6 +244,70 @@ function M.latestSample(data, systemId)
   return list[#list]
 end
 
+function M.alertsForSystem(data, systemId)
+  if type(data) ~= "table" or type(data.alertsBySystem) ~= "table" or not systemId then
+    return {}
+  end
+  local list = data.alertsBySystem[systemId]
+  if type(list) ~= "table" then
+    return {}
+  end
+  return list
+end
+
+local function formatAlertNumber(val)
+  local n = tonumber(val) or 0
+  if math.floor(n) == n then
+    return string.format("%d", n)
+  end
+  return string.format("%.1f", n)
+end
+
+local ALERT_SPEC = {
+  Status = { label = "Host down", noVal = true },
+  CPU = { label = "CPU", op = "≥", unit = "%" },
+  CPUIOWait = { label = "CPU I/O wait", op = "≥", unit = "%" },
+  CPUSteal = { label = "CPU steal", op = "≥", unit = "%" },
+  Memory = { label = "Memory", op = "≥", unit = "%" },
+  Disk = { label = "Disk", op = "≥", unit = "%" },
+  Bandwidth = { label = "Bandwidth", op = "≥", unit = " MB/s" },
+  GPU = { label = "GPU", op = "≥", unit = "%" },
+  Temperature = { label = "Temperature", op = "≥", unit = "°C" },
+  Battery = { label = "Battery", op = "≤", unit = "%" },
+  LoadAvg1 = { label = "Load (1m)", op = "≥", unit = "" },
+  LoadAvg5 = { label = "Load (5m)", op = "≥", unit = "" },
+  LoadAvg15 = { label = "Load (15m)", op = "≥", unit = "" },
+  NetworkMonitorLoss = { label = "Packet loss", op = "≥", unit = "%" },
+  NetworkMonitorCert = { label = "TLS cert expiring", op = "≤", unit = "d" },
+  ContainerHealth = { label = "Unhealthy container", noVal = true },
+  SystemdFailed = { label = "Failed systemd service", noVal = true },
+}
+
+function M.formatAlert(alert)
+  if type(alert) ~= "table" then
+    return ""
+  end
+  local name = tostring(alert.name or "Alert")
+  local spec = ALERT_SPEC[name]
+  local text
+  if spec ~= nil then
+    if spec.noVal or alert.value == nil then
+      text = spec.label
+    else
+      text = string.format("%s %s %s%s", spec.label, spec.op, formatAlertNumber(alert.value), spec.unit)
+    end
+  elseif alert.value ~= nil then
+    text = string.format("%s (%s)", name, formatAlertNumber(alert.value))
+  else
+    text = name
+  end
+  local mins = tonumber(alert.min) or 0
+  if mins > 0 then
+    text = string.format("%s (%dm)", text, math.floor(mins))
+  end
+  return text
+end
+
 function M.effectiveState(data, system, latest, filter)
   if type(data) ~= "table" or type(data.connection) ~= "table" then
     return "disconnected"

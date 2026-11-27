@@ -10,6 +10,13 @@ tags         = ["bar", "panel", "service", "system", "indicator"]
 dependencies = ["beszel-ctl"]
 
 [[setting]]
+key             = "notify_alerts"
+type            = "bool"
+label_key       = "settings.notify_alerts.label"
+description_key = "settings.notify_alerts.description"
+default         = true
+
+[[setting]]
 key             = "warn_threshold"
 type            = "int"
 label_key       = "settings.warn_threshold.label"

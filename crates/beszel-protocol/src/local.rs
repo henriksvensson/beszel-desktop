@@ -89,6 +89,21 @@ pub struct DiskSample {
     pub total_gb: f64,
 }
 
+/// An active (triggered) alert reported by the Beszel hub for a system.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ActiveAlert {
+    pub id: String,
+    pub system_id: String,
+    /// Upstream Beszel alert type name (e.g. `"Disk"`, `"CPU"`, `"Status"`, `"SystemdFailed"`).
+    pub name: String,
+    /// Configured alert threshold value, when applicable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<f64>,
+    /// Configured sustained duration in minutes, when applicable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min: Option<u32>,
+}
+
 /// Single live (~1 Hz) system telemetry sample stamped locally by `beszel-relay`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct LiveSample {
@@ -191,6 +206,8 @@ pub enum RelayEvent {
         hub_url: Option<String>,
         connection: ConnectionStatus,
         systems: Vec<SystemLiveState>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        alerts: Vec<ActiveAlert>,
     },
     /// Incremental ~1 Hz live sample for a subscribed system.
     Sample {
@@ -201,6 +218,8 @@ pub enum RelayEvent {
     Connection { connection: ConnectionStatus },
     /// Updated metadata for subscribed systems.
     SystemsChanged { systems: Vec<SystemSummary> },
+    /// Full current list of active (triggered) alerts across subscribed systems.
+    AlertsChanged { alerts: Vec<ActiveAlert> },
 }
 
 /// Encode a `RelayEvent` as a single NDJSON line (terminated by `\n`).
@@ -258,6 +277,13 @@ mod tests {
                     net_recv_bps: Some(92_367),
                     ..LiveSample::default()
                 }],
+            }],
+            alerts: vec![ActiveAlert {
+                id: "alert_01".into(),
+                system_id: "sys_example_01".into(),
+                name: "Disk".into(),
+                value: Some(85.0),
+                min: Some(5),
             }],
         };
 

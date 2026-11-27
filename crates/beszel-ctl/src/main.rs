@@ -9,7 +9,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use anyhow::{Context, Result};
 use beszel_protocol::default_socket_path;
 use beszel_protocol::local::{
-    ConnectionState, ConnectionStatus, RelayEvent, SystemLiveState, decode_ndjson, encode_ndjson,
+    ActiveAlert, ConnectionState, ConnectionStatus, RelayEvent, SystemLiveState, decode_ndjson,
+    encode_ndjson,
 };
 use clap::{Parser, Subcommand};
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -177,6 +178,7 @@ struct SnapshotMeta {
     generated_at_ms: i64,
     hub_url: Option<String>,
     connection: ConnectionStatus,
+    alerts: Vec<ActiveAlert>,
 }
 
 fn emit_raw_line(line: &str) -> Result<bool> {
@@ -189,6 +191,7 @@ fn emit_raw_line(line: &str) -> Result<bool> {
         hub_url,
         connection,
         systems,
+        alerts,
     }) = decode_ndjson(line)
     else {
         return write_stdout_line(line);
@@ -199,6 +202,7 @@ fn emit_raw_line(line: &str) -> Result<bool> {
         generated_at_ms,
         hub_url,
         connection,
+        alerts,
     };
     emit_split_snapshot(meta, systems)
 }
@@ -220,6 +224,7 @@ fn emit_split_snapshot(meta: SnapshotMeta, systems: Vec<SystemLiveState>) -> Res
         hub_url: meta.hub_url,
         connection: meta.connection,
         systems: header_systems,
+        alerts: meta.alerts,
     };
     if !write_stdout_raw(&encode_ndjson(&header)?)? {
         return Ok(false);
@@ -321,6 +326,9 @@ fn print_watch_event(event: RelayEvent, system_names: &mut Vec<(String, String)>
         RelayEvent::SystemsChanged { systems } => {
             *system_names = systems.into_iter().map(|s| (s.id, s.name)).collect();
         }
+        RelayEvent::AlertsChanged { alerts } => {
+            println!("alerts={}", alerts.len());
+        }
     }
 }
 
@@ -396,6 +404,7 @@ fn apply_event_to_view(view: &mut ClientView, event: RelayEvent) {
         RelayEvent::SystemsChanged { systems } => {
             view.systems = systems;
         }
+        RelayEvent::AlertsChanged { .. } => {}
     }
 }
 

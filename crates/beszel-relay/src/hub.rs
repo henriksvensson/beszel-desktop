@@ -2,14 +2,16 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use anyhow::{Result, anyhow, bail};
-use beszel_protocol::local::{ConnectionState, SystemSummary};
+use beszel_protocol::local::{ActiveAlert, ConnectionState, SystemSummary};
 use beszel_protocol::upstream::{
-    AuthResponse, PbConnectEvent, RealtimeSubscribeRequest, RtMetricsPayload,
-    SYSTEMS_COLLECTION_TOPIC, SystemDetailsListResponse, SystemsListResponse, SystemsRealtimeEvent,
+    ALERTS_COLLECTION_TOPIC, AlertsListResponse, AlertsRealtimeEvent, AuthResponse, PbConnectEvent,
+    RealtimeSubscribeRequest, RtMetricsPayload, SYSTEMS_COLLECTION_TOPIC,
+    SystemDetailsListResponse, SystemsListResponse, SystemsRealtimeEvent, UpstreamAlertRecord,
     UpstreamSystemDetailsRecord, UpstreamSystemRecord, os_family_label, rt_metrics_topic,
 };
 use futures_util::StreamExt;
 use reqwest::{Client, StatusCode};
+use serde::de::DeserializeOwned;
 use tokio::sync::watch;
 use tokio::time::Instant;
 use tracing::{debug, info, warn};
@@ -123,8 +125,9 @@ impl SubscriptionMap {
     }
 
     fn all_subscriptions(&self, include_metrics: bool) -> Vec<String> {
-        let mut out = Vec::with_capacity(1 + self.topics.len());
+        let mut out = Vec::with_capacity(2 + self.topics.len());
         out.push(SYSTEMS_COLLECTION_TOPIC.to_string());
+        out.push(ALERTS_COLLECTION_TOPIC.to_string());
         if include_metrics {
             out.extend(self.topics.iter().cloned());
         }
@@ -144,6 +147,7 @@ struct ActiveSession<'a> {
     client_id: String,
     known_records: HashMap<String, UpstreamSystemRecord>,
     known_details: HashMap<String, UpstreamSystemDetailsRecord>,
+    known_alerts: HashMap<String, UpstreamAlertRecord>,
     current_systems: Vec<SystemSummary>,
     subs: SubscriptionMap,
     streaming_metrics: bool,
@@ -185,12 +189,29 @@ impl<'a> ActiveSession<'a> {
         if name == SYSTEMS_COLLECTION_TOPIC || name.starts_with("systems/") {
             return self.handle_systems_event(&event.data).await;
         }
+        if name == ALERTS_COLLECTION_TOPIC || name.starts_with("alerts/") {
+            self.handle_alerts_event(&event.data);
+            return Ok(());
+        }
         if let Some(system_id) = self.subs.system_id_for(name) {
             decode_and_record_sample(system_id, &event.data, self.hub.state);
         } else {
             debug!(event = %name, "Ignoring unrelated SSE event");
         }
         Ok(())
+    }
+
+    fn handle_alerts_event(&mut self, data: &str) {
+        let parsed: AlertsRealtimeEvent = match serde_json::from_str(data) {
+            Ok(ev) => ev,
+            Err(err) => {
+                warn!(error = %err, "Failed to decode alerts/* realtime event");
+                return;
+            }
+        };
+        apply_alert_mutation(&mut self.known_alerts, parsed);
+        let active = active_alerts_for_systems(&self.known_alerts, &self.current_systems);
+        self.hub.state.set_alerts(active);
     }
 
     async fn handle_systems_event(&mut self, data: &str) -> std::result::Result<(), SessionError> {
@@ -220,6 +241,8 @@ impl<'a> ActiveSession<'a> {
         self.current_systems = next_systems.clone();
         self.subs = next_subs;
         self.hub.state.set_systems(next_systems);
+        let active = active_alerts_for_systems(&self.known_alerts, &self.current_systems);
+        self.hub.state.set_alerts(active);
 
         if topics_changed && self.streaming_metrics {
             info!(
@@ -244,12 +267,15 @@ impl HubClient<'_> {
             .await
             .inspect_err(|err| clear_token_on_auth_error(err, cached_token))?;
         let details = self.fetch_system_details(&token).await;
+        let alerts = self.fetch_alerts(&token).await;
 
         let systems = select_systems(&records, &details, self.config.system.as_deref())
             .map_err(|e| SessionError::Transient(e.to_string()))?;
         let names: Vec<&str> = systems.iter().map(|s| s.name.as_str()).collect();
         info!(count = systems.len(), systems = ?names, "Discovered Beszel systems");
         self.state.set_systems(systems.clone());
+        self.state
+            .set_alerts(active_alerts_for_systems(&alerts, &systems));
 
         let response = self.open_sse_stream().await?;
         let mut sse_stream = SseStream {
@@ -264,6 +290,7 @@ impl HubClient<'_> {
             client_id,
             known_records: records.into_iter().map(|r| (r.id.clone(), r)).collect(),
             known_details: details,
+            known_alerts: alerts,
             current_systems: systems.clone(),
             subs: SubscriptionMap::from_systems(&systems),
             streaming_metrics: self.state.client_count() > 0,
@@ -370,35 +397,57 @@ impl HubClient<'_> {
         Ok(list.items)
     }
 
-    async fn fetch_system_details(
-        &self,
-        token: &str,
-    ) -> HashMap<String, UpstreamSystemDetailsRecord> {
-        let url = format!(
-            "{}/api/collections/system_details/records?perPage=200",
-            self.config.hub_url
-        );
-        let Ok(resp) = self
+    async fn fetch_optional_json<T: DeserializeOwned>(&self, path: &str, token: &str) -> Option<T> {
+        let url = format!("{}{}", self.config.hub_url, path);
+        let resp = self
             .client
             .get(&url)
             .timeout(HTTP_TIMEOUT)
             .header("Authorization", token)
             .send()
             .await
-        else {
-            return HashMap::new();
-        };
+            .ok()?;
         if !resp.status().is_success() {
-            debug!(status = %resp.status(), "system_details collection unavailable");
-            return HashMap::new();
+            debug!(path, status = %resp.status(), "Optional Beszel collection unavailable");
+            return None;
         }
-        let Ok(list) = resp.json::<SystemDetailsListResponse>().await else {
+        resp.json::<T>().await.ok()
+    }
+
+    async fn fetch_system_details(
+        &self,
+        token: &str,
+    ) -> HashMap<String, UpstreamSystemDetailsRecord> {
+        let Some(list) = self
+            .fetch_optional_json::<SystemDetailsListResponse>(
+                "/api/collections/system_details/records?perPage=200",
+                token,
+            )
+            .await
+        else {
             return HashMap::new();
         };
         list.items
             .into_iter()
             .filter(|item| !item.system_key().is_empty())
             .map(|item| (item.system_key().to_string(), item))
+            .collect()
+    }
+
+    async fn fetch_alerts(&self, token: &str) -> HashMap<String, UpstreamAlertRecord> {
+        let Some(list) = self
+            .fetch_optional_json::<AlertsListResponse>(
+                "/api/collections/alerts/records?perPage=200&fields=id,name,system,value,min,triggered",
+                token,
+            )
+            .await
+        else {
+            return HashMap::new();
+        };
+        list.items
+            .into_iter()
+            .filter(|item| !item.id.is_empty())
+            .map(|item| (item.id.clone(), item))
             .collect()
     }
 
@@ -623,21 +672,52 @@ where
     }
 }
 
+fn apply_collection_mutation<T>(map: &mut HashMap<String, T>, action: &str, id: String, record: T) {
+    match action {
+        "delete" => {
+            map.remove(&id);
+        }
+        "create" | "update" if !id.is_empty() => {
+            map.insert(id, record);
+        }
+        other => {
+            debug!(action = %other, "Ignoring unknown collection realtime action");
+        }
+    }
+}
+
 fn apply_record_mutation(
     known_records: &mut HashMap<String, UpstreamSystemRecord>,
     event: SystemsRealtimeEvent,
 ) {
-    match event.action.as_str() {
-        "delete" => {
-            known_records.remove(&event.record.id);
-        }
-        "create" | "update" => {
-            known_records.insert(event.record.id.clone(), event.record);
-        }
-        other => {
-            debug!(action = %other, "Ignoring unknown systems/* action");
-        }
-    }
+    let id = event.record.id.clone();
+    apply_collection_mutation(known_records, &event.action, id, event.record);
+}
+
+fn apply_alert_mutation(
+    known_alerts: &mut HashMap<String, UpstreamAlertRecord>,
+    event: AlertsRealtimeEvent,
+) {
+    let id = event.record.id.clone();
+    apply_collection_mutation(known_alerts, &event.action, id, event.record);
+}
+
+fn active_alerts_for_systems(
+    known_alerts: &HashMap<String, UpstreamAlertRecord>,
+    systems: &[SystemSummary],
+) -> Vec<ActiveAlert> {
+    let mut active: Vec<ActiveAlert> = known_alerts
+        .values()
+        .filter(|alert| systems.iter().any(|sys| sys.id == alert.system))
+        .filter_map(UpstreamAlertRecord::to_active_alert)
+        .collect();
+    active.sort_by(|a, b| {
+        a.system_id
+            .cmp(&b.system_id)
+            .then_with(|| a.name.cmp(&b.name))
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    active
 }
 
 fn decode_and_record_sample(system_id: &str, data: &str, state: &RelayState) {
@@ -869,9 +949,77 @@ mod tests {
         let subs = SubscriptionMap::from_systems(&systems);
         assert_eq!(
             subs.all_subscriptions(false),
-            vec![SYSTEMS_COLLECTION_TOPIC.to_string()]
+            vec![
+                SYSTEMS_COLLECTION_TOPIC.to_string(),
+                ALERTS_COLLECTION_TOPIC.to_string(),
+            ]
         );
-        assert_eq!(subs.all_subscriptions(true).len(), 3);
+        assert_eq!(subs.all_subscriptions(true).len(), 4);
+    }
+
+    #[test]
+    fn alert_mutations_filter_triggered_alerts_to_subscribed_systems() {
+        let systems = select_systems(&sample_records(), &HashMap::new(), None).expect("systems");
+        let mut known = HashMap::new();
+        apply_alert_mutation(
+            &mut known,
+            AlertsRealtimeEvent {
+                action: "create".into(),
+                record: UpstreamAlertRecord {
+                    id: "a1".into(),
+                    system: "id_a".into(),
+                    name: "Disk".into(),
+                    triggered: true,
+                    value: Some(85.0),
+                    min: Some(5),
+                },
+            },
+        );
+        apply_alert_mutation(
+            &mut known,
+            AlertsRealtimeEvent {
+                action: "create".into(),
+                record: UpstreamAlertRecord {
+                    id: "a2".into(),
+                    system: "id_b".into(),
+                    name: "CPU".into(),
+                    triggered: false,
+                    value: Some(90.0),
+                    min: Some(10),
+                },
+            },
+        );
+        apply_alert_mutation(
+            &mut known,
+            AlertsRealtimeEvent {
+                action: "create".into(),
+                record: UpstreamAlertRecord {
+                    id: "a3".into(),
+                    system: "id_down".into(),
+                    name: "Status".into(),
+                    triggered: true,
+                    value: None,
+                    min: None,
+                },
+            },
+        );
+
+        let active = active_alerts_for_systems(&known, &systems);
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0].id, "a1");
+        assert_eq!(active[0].name, "Disk");
+
+        apply_alert_mutation(
+            &mut known,
+            AlertsRealtimeEvent {
+                action: "delete".into(),
+                record: UpstreamAlertRecord {
+                    id: "a1".into(),
+                    ..UpstreamAlertRecord::default()
+                },
+            },
+        );
+        assert!(active_alerts_for_systems(&known, &systems).is_empty());
     }
 
     #[test]

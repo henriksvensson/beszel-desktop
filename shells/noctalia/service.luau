@@ -3,6 +3,8 @@
 -- Bridges `beszel-ctl watch --raw --reconnect` into shared `noctalia.state`
 -- so multiple bar widgets and the panel share one local Unix socket stream.
 
+local fmt = require("./lib/format.luau")
+
 local STATE_KEY = "beszel.data"
 
 local connection = {
@@ -12,6 +14,9 @@ local connection = {
 }
 local systems = {}
 local historyBySystem = {}
+local alertsBySystem = {}
+local seenAlertIds = {}
+local alertsInitialized = false
 local historyCapacity = 60
 local hubUrl = nil
 local ctlMissing = false
@@ -62,10 +67,50 @@ local function publish()
     hubUrl = hubUrl,
     systems = systems,
     historyBySystem = historyBySystem,
+    alertsBySystem = alertsBySystem,
     historyCapacity = historyCapacity,
     ctlMissing = ctlMissing,
     updatedAtMs = noctalia.nowMs(),
   })
+end
+
+local function systemDisplayName(systemId)
+  local sys = fmt.findSystemById(systems, systemId)
+  if sys ~= nil and type(sys.name) == "string" and sys.name ~= "" then
+    return sys.name
+  end
+  return tostring(systemId or "")
+end
+
+local function applyAlerts(rawAlerts, notifyNew)
+  local nextBySystem = {}
+  local nextSeen = {}
+  local shouldNotify = notifyNew and alertsInitialized and noctalia.getConfig("notify_alerts") ~= false
+
+  if type(rawAlerts) == "table" then
+    for _, alert in ipairs(rawAlerts) do
+      if type(alert) == "table" and type(alert.system_id) == "string" then
+        local list = nextBySystem[alert.system_id]
+        if list == nil then
+          list = {}
+          nextBySystem[alert.system_id] = list
+        end
+        table.insert(list, alert)
+        local key = tostring(alert.id or (alert.system_id .. ":" .. tostring(alert.name or "")))
+        nextSeen[key] = true
+        if shouldNotify and not seenAlertIds[key] then
+          noctalia.notifyError(
+            noctalia.tr("alerts.notification_title", { host = systemDisplayName(alert.system_id) }),
+            fmt.formatAlert(alert)
+          )
+        end
+      end
+    end
+  end
+
+  alertsBySystem = nextBySystem
+  seenAlertIds = nextSeen
+  alertsInitialized = true
 end
 
 local function applySnapshot(msg)
@@ -98,6 +143,7 @@ local function applySnapshot(msg)
   systems = nextSystems
   historyBySystem = nextHistory
   historyCapacity = cap
+  applyAlerts(msg.alerts, false)
   publish()
 end
 
@@ -146,6 +192,9 @@ local function onRelayLine(rawLine)
     publish()
   elseif msg.type == "systems_changed" and type(msg.systems) == "table" then
     systems = msg.systems
+    publish()
+  elseif msg.type == "alerts_changed" and type(msg.alerts) == "table" then
+    applyAlerts(msg.alerts, true)
     publish()
   end
 end

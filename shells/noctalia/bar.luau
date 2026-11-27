@@ -34,7 +34,7 @@ local function metricColor(state, statusColor, pct, warnPct, dangerPct)
   return fmt.severityColor(pct, "on_surface", warnPct, dangerPct)
 end
 
-local function buildTooltip(sys, latest, state, filter)
+local function buildTooltip(sys, latest, state, filter, alerts)
   local rows = {}
   if sys ~= nil then
     table.insert(rows, { key = noctalia.tr("tooltip.host"), value = sys.name })
@@ -42,6 +42,16 @@ local function buildTooltip(sys, latest, state, filter)
     if osLabel ~= nil then
       table.insert(rows, { key = noctalia.tr("tooltip.os"), value = osLabel })
     end
+  end
+  if type(alerts) == "table" and #alerts > 0 then
+    local labels = {}
+    for _, alert in ipairs(alerts) do
+      table.insert(labels, fmt.formatAlert(alert))
+    end
+    table.insert(rows, {
+      key = noctalia.tr("tooltip.alerts"),
+      value = table.concat(labels, ", "),
+    })
   end
   if latest ~= nil then
     table.insert(rows, {
@@ -188,10 +198,33 @@ local function appendNetworkItems(items, latest, networkMode, color)
   end
 end
 
-local function renderVertical(latest, state, statusColor, warnPct, dangerPct, opts)
+local function alertBadge(alerts)
+  if type(alerts) ~= "table" or #alerts == 0 then
+    return nil
+  end
+  local children = {
+    ui.glyph({ name = "alert-triangle", size = 14, color = "error" }),
+  }
+  if #alerts > 1 then
+    table.insert(children, ui.label({
+      text = tostring(#alerts),
+      color = "error",
+      fontWeight = "semibold",
+      maxLines = 1,
+    }))
+  end
+  return ui.row({ gap = 2, align = "center" }, children)
+end
+
+local function renderVertical(latest, state, statusColor, warnPct, dangerPct, opts, alerts)
   local rows = {}
   local baseColor = state == "connected" and "on_surface" or statusColor
   local mutedColor = state == "connected" and "on_surface_variant" or statusColor
+
+  local badge = alertBadge(alerts)
+  if badge ~= nil then
+    table.insert(rows, badge)
+  end
 
   if opts.showCpu then
     local pct = tonumber(latest.cpu_pct) or 0
@@ -305,10 +338,11 @@ local function render()
   local sys = resolveDisplayedSystem(systems, filter)
   local effectiveFilter = sessionHostId ~= nil and "" or filter
   local latest = sys ~= nil and fmt.latestSample(data, sys.id) or nil
+  local alerts = sys ~= nil and fmt.alertsForSystem(data, sys.id) or {}
   local state = fmt.effectiveState(data, sys, latest, effectiveFilter)
   local statusColor = fmt.stateColor(state)
 
-  barWidget.setTooltip(buildTooltip(sys, latest, state, effectiveFilter))
+  barWidget.setTooltip(buildTooltip(sys, latest, state, effectiveFilter, alerts))
 
   local showMetrics = latest ~= nil
     and state ~= "disconnected"
@@ -316,6 +350,18 @@ local function render()
     and state ~= "not_found"
 
   if not showMetrics then
+    local badge = alertBadge(alerts)
+    if badge ~= nil then
+      barWidget.render(ui.row({ gap = 6, align = "center" }, {
+        badge,
+        ui.label({
+          text = fmt.stateLabel(state, effectiveFilter),
+          color = statusColor,
+          maxLines = 1,
+        }),
+      }))
+      return
+    end
     barWidget.render(ui.label({
       text = fmt.stateLabel(state, effectiveFilter),
       color = statusColor,
@@ -325,7 +371,7 @@ local function render()
   end
 
   if barWidget.isVertical() then
-    renderVertical(latest, state, statusColor, warnPct, dangerPct, opts)
+    renderVertical(latest, state, statusColor, warnPct, dangerPct, opts, alerts)
     return
   end
 
@@ -338,6 +384,11 @@ local function render()
       color = baseColor,
       maxLines = 1,
     }))
+  end
+
+  local badge = alertBadge(alerts)
+  if badge ~= nil then
+    table.insert(items, badge)
   end
 
   if opts.showCpu then

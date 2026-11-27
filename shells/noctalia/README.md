@@ -48,6 +48,7 @@ noctalia msg panel-toggle henriksvensson/beszel-desktop:panel
 
 | Setting | Type | Default | Description |
 | --- | --- | --- | --- |
+| `notify_alerts` | `bool` | `true` | Send a desktop notification when a Beszel hub alert triggers on a monitored host. |
 | `warn_threshold` | `int` | `70` | Percentage threshold (`10`–`99`) for warning severity coloring. |
 | `danger_threshold` | `int` | `90` | Percentage threshold (`11`–`100`) for danger severity coloring. |
 | `stale_seconds` | `int` | `5` | Seconds without a new sample before metrics are marked stale (`2`–`60`, advanced). |

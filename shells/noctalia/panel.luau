@@ -1018,6 +1018,46 @@ local function buildContainersSection(latest)
   })
 end
 
+local function buildAlertsBanner(alerts)
+  if type(alerts) ~= "table" or #alerts == 0 then
+    return nil
+  end
+  local heading = #alerts == 1
+    and noctalia.tr("panel.alerts_title_one")
+    or noctalia.tr("panel.alerts_title_many", { count = tostring(#alerts) })
+
+  local lines = {}
+  for _, alert in ipairs(alerts) do
+    table.insert(lines, fmt.formatAlert(alert))
+  end
+
+  return ui.row({
+    gap = 8,
+    paddingH = 10,
+    paddingV = 8,
+    radius = 8,
+    fill = "error_container",
+    align = "center",
+  }, {
+    ui.glyph({ name = "alert-triangle", size = 15, color = "on_error_container" }),
+    ui.column({ gap = 2, flexGrow = 1 }, {
+      ui.label({
+        text = heading,
+        fontSize = 12,
+        fontWeight = "semibold",
+        color = "on_error_container",
+        maxLines = 1,
+      }),
+      ui.label({
+        text = table.concat(lines, " · "),
+        fontSize = 11,
+        color = "on_error_container",
+        maxLines = 3,
+      }),
+    }),
+  })
+end
+
 local function buildOnboardingCard(state)
   local isMissing = type(data) == "table" and data.ctlMissing == true
   local isCopied = noctalia.nowMs() < copiedUntilMs
@@ -1172,15 +1212,24 @@ render = function()
     ui.row({ gap = 4, align = "center" }, headerActions),
   })
 
+  local alerts = sys ~= nil and fmt.alertsForSystem(data, sys.id) or {}
+  local alertsBanner = buildAlertsBanner(alerts)
+
   if latest == nil then
-    panel.render(ui.column({ flexGrow = 1, gap = 12 }, {
-      header,
-      buildOnboardingCard(state),
-    }))
+    local emptyBody = { header }
+    if alertsBanner ~= nil then
+      table.insert(emptyBody, alertsBanner)
+    end
+    table.insert(emptyBody, buildOnboardingCard(state))
+    panel.render(ui.column({ flexGrow = 1, gap = 12 }, emptyBody))
     return
   end
 
   local scrollChildren = {}
+
+  if alertsBanner ~= nil then
+    table.insert(scrollChildren, alertsBanner)
+  end
 
   local vitals = buildVitalsStrip(sys, latest)
   if vitals ~= nil then

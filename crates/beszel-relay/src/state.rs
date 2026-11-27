@@ -4,7 +4,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use beszel_protocol::LOCAL_PROTOCOL_VERSION;
 use beszel_protocol::local::{
-    ConnectionState, ConnectionStatus, LiveSample, RelayEvent, SystemLiveState, SystemSummary,
+    ActiveAlert, ConnectionState, ConnectionStatus, LiveSample, RelayEvent, SystemLiveState,
+    SystemSummary,
 };
 use tokio::sync::{broadcast, watch};
 
@@ -24,6 +25,7 @@ struct InnerState {
     connection: ConnectionStatus,
     system_order: Vec<String>,
     systems: HashMap<String, SystemEntry>,
+    alerts: Vec<ActiveAlert>,
 }
 
 struct SystemEntry {
@@ -61,6 +63,7 @@ impl RelayState {
             },
             system_order: Vec::new(),
             systems: HashMap::new(),
+            alerts: Vec::new(),
         };
         Self {
             inner: Arc::new(Mutex::new(inner)),
@@ -187,6 +190,16 @@ impl RelayState {
             connection: guard.connection.clone(),
         });
     }
+
+    /// Replace the active triggered alert list and broadcast when it changed.
+    pub fn set_alerts(&self, alerts: Vec<ActiveAlert>) {
+        let mut guard = self.inner.lock().expect("relay state lock poisoned");
+        if guard.alerts == alerts {
+            return;
+        }
+        guard.alerts = alerts.clone();
+        let _ = self.tx.send(RelayEvent::AlertsChanged { alerts });
+    }
 }
 
 /// Strip latest-only heavy fields from historical samples so snapshots stay compact.
@@ -215,6 +228,7 @@ fn build_snapshot(inner: &InnerState, generated_at_ms: i64) -> RelayEvent {
         hub_url: inner.hub_url.clone(),
         connection: inner.connection.clone(),
         systems,
+        alerts: inner.alerts.clone(),
     }
 }
 
