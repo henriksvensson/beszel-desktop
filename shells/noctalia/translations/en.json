@@ -170,7 +170,6 @@
     "connected": "Live",
     "connecting": "Connecting",
     "disconnected": "Beszel relay offline",
-    "host_offline": "{host} · Beszel offline",
     "not_found": "{host} not found",
     "paused": "Paused",
     "reconnecting": "Reconnecting",

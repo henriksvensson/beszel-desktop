@@ -13,8 +13,38 @@ local SELECTED_HOST_KEY = "beszel.selected_host"
 
 local data = noctalia.state.get(STATE_KEY)
 local sessionHostId = nil
+local instanceToken = tostring({}) .. "-" .. tostring(noctalia.nowMs())
 
 noctalia.setUpdateInterval(1000)
+
+local function offlineOwnerKey()
+  local out = type(barWidget.outputName) == "function" and barWidget.outputName() or ""
+  if type(out) ~= "string" or out == "" then
+    out = "default"
+  end
+  return "beszel.offline_owner." .. out
+end
+
+local function claimOfflineOwner()
+  local key = offlineOwnerKey()
+  local now = noctalia.nowMs()
+  local current = noctalia.state.get(key)
+  if type(current) ~= "table"
+      or current.id == instanceToken
+      or (now - (tonumber(current.ts) or 0)) > 2500 then
+    noctalia.state.set(key, { id = instanceToken, ts = now })
+    return true
+  end
+  return false
+end
+
+local function releaseOfflineOwner()
+  local key = offlineOwnerKey()
+  local current = noctalia.state.get(key)
+  if type(current) == "table" and current.id == instanceToken then
+    noctalia.state.set(key, nil)
+  end
+end
 
 local function resolveDisplayedSystem(systems, filter)
   if sessionHostId ~= nil then
@@ -351,28 +381,31 @@ local function render()
   local state = fmt.effectiveState(data, sys, latest, effectiveFilter)
   local statusColor = fmt.stateColor(state)
 
+  local hardOffline = fmt.isHardOffline(state)
+  if hardOffline then
+    if not claimOfflineOwner() then
+      barWidget.setVisible(false)
+      return
+    end
+  else
+    releaseOfflineOwner()
+  end
+  barWidget.setVisible(true)
+
   barWidget.setTooltip(buildTooltip(sys, latest, state, effectiveFilter, alerts))
 
   local showMetrics = latest ~= nil
-    and not fmt.isHardOffline(state)
+    and not hardOffline
     and state ~= "not_found"
 
   if not showMetrics then
-    local offlineLabel = fmt.stateLabel(state, effectiveFilter)
-    local trimmedFilter = noctalia.string.trim(effectiveFilter or "")
-    if state == "disconnected" and opts.showHost and trimmedFilter ~= "" then
-      local hostLabel = (sys ~= nil and type(sys.name) == "string" and sys.name ~= "")
-        and sys.name
-        or trimmedFilter
-      offlineLabel = noctalia.tr("state.host_offline", { host = hostLabel })
-    end
-
-    local badge = not fmt.isHardOffline(state) and alertBadge(alerts) or nil
+    local statusText = fmt.stateLabel(state, effectiveFilter)
+    local badge = not hardOffline and alertBadge(alerts) or nil
     if badge ~= nil then
       barWidget.render(ui.row({ gap = 6, align = "center" }, {
         badge,
         ui.label({
-          text = offlineLabel,
+          text = statusText,
           color = statusColor,
           maxLines = 1,
         }),
@@ -380,7 +413,7 @@ local function render()
       return
     end
     barWidget.render(ui.label({
-      text = offlineLabel,
+      text = statusText,
       color = statusColor,
       maxLines = 1,
     }))
