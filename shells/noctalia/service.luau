@@ -193,13 +193,25 @@ local function onRelayLine(rawLine)
   elseif msg.type == "sample" then
     applySample(msg.system_id, msg.sample)
   elseif msg.type == "connection" and type(msg.connection) == "table" then
+    local prevState = type(connection) == "table" and connection.state or nil
+    local prevErr = type(connection) == "table" and connection.last_error or nil
+    local prevAttempts = type(connection) == "table" and connection.reconnect_attempts or nil
     connection = msg.connection
+    local alertsCleared = false
     if fmt.isHardOffline(connection.state) then
+      if next(alertsBySystem) ~= nil or next(alertCounts) ~= nil or alertsInitialized then
+        alertsCleared = true
+      end
       alertsBySystem = {}
       alertCounts = {}
       alertsInitialized = false
     end
-    publish()
+    if alertsCleared
+        or connection.state ~= prevState
+        or connection.last_error ~= prevErr
+        or connection.reconnect_attempts ~= prevAttempts then
+      publish()
+    end
   elseif msg.type == "systems_changed" and type(msg.systems) == "table" then
     systems = msg.systems
     publish()

@@ -13,26 +13,40 @@ local SELECTED_HOST_KEY = "beszel.selected_host"
 
 local data = noctalia.state.get(STATE_KEY)
 local sessionHostId = nil
-local instanceToken = tostring({}) .. "-" .. tostring(noctalia.nowMs())
+local instanceSeq = (tonumber(noctalia.state.get("beszel.bar_seq")) or 0) + 1
+noctalia.state.set("beszel.bar_seq", instanceSeq)
+local cachedOutput = ""
+local lastVisible = true
 
 noctalia.setUpdateInterval(1000)
 
 local function offlineOwnerKey()
-  local out = type(barWidget.outputName) == "function" and barWidget.outputName() or ""
-  if type(out) ~= "string" or out == "" then
-    out = "default"
+  if cachedOutput == "" and type(barWidget.outputName) == "function" then
+    local out = barWidget.outputName()
+    if type(out) == "string" and out ~= "" then
+      cachedOutput = out
+    end
   end
-  return "beszel.offline_owner." .. out
+  return "beszel.offline_owner." .. (cachedOutput ~= "" and cachedOutput or "default")
+end
+
+local function setWidgetVisible(visible)
+  if visible ~= lastVisible then
+    lastVisible = visible
+    barWidget.setVisible(visible)
+  end
 end
 
 local function claimOfflineOwner()
   local key = offlineOwnerKey()
   local now = noctalia.nowMs()
   local current = noctalia.state.get(key)
-  if type(current) ~= "table"
-      or current.id == instanceToken
-      or (now - (tonumber(current.ts) or 0)) > 2500 then
-    noctalia.state.set(key, { id = instanceToken, ts = now })
+  local currentSeq = type(current) == "table" and tonumber(current.seq) or nil
+  local currentTs = type(current) == "table" and tonumber(current.ts) or 0
+  local expired = (now - currentTs) > 5000
+
+  if currentSeq == nil or currentSeq <= 0 or currentSeq == instanceSeq or instanceSeq < currentSeq or expired then
+    noctalia.state.set(key, { seq = instanceSeq, ts = now })
     return true
   end
   return false
@@ -41,8 +55,8 @@ end
 local function releaseOfflineOwner()
   local key = offlineOwnerKey()
   local current = noctalia.state.get(key)
-  if type(current) == "table" and current.id == instanceToken then
-    noctalia.state.set(key, nil)
+  if type(current) == "table" and tonumber(current.seq) == instanceSeq then
+    noctalia.state.set(key, { seq = 0, ts = 0 })
   end
 end
 
@@ -384,13 +398,13 @@ local function render()
   local hardOffline = fmt.isHardOffline(state)
   if hardOffline then
     if not claimOfflineOwner() then
-      barWidget.setVisible(false)
+      setWidgetVisible(false)
       return
     end
   else
     releaseOfflineOwner()
   end
-  barWidget.setVisible(true)
+  setWidgetVisible(true)
 
   barWidget.setTooltip(buildTooltip(sys, latest, state, effectiveFilter, alerts))
 
