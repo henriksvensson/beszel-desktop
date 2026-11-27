@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -26,6 +26,7 @@ struct InnerState {
     system_order: Vec<String>,
     systems: HashMap<String, SystemEntry>,
     alerts: Vec<ActiveAlert>,
+    alert_counts: BTreeMap<String, usize>,
 }
 
 struct SystemEntry {
@@ -64,6 +65,7 @@ impl RelayState {
             system_order: Vec::new(),
             systems: HashMap::new(),
             alerts: Vec::new(),
+            alert_counts: BTreeMap::new(),
         };
         Self {
             inner: Arc::new(Mutex::new(inner)),
@@ -191,14 +193,18 @@ impl RelayState {
         });
     }
 
-    /// Replace the active triggered alert list and broadcast when it changed.
-    pub fn set_alerts(&self, alerts: Vec<ActiveAlert>) {
+    /// Replace the active triggered alert list and configured counts, broadcasting on change.
+    pub fn set_alerts(&self, alerts: Vec<ActiveAlert>, alert_counts: BTreeMap<String, usize>) {
         let mut guard = self.inner.lock().expect("relay state lock poisoned");
-        if guard.alerts == alerts {
+        if guard.alerts == alerts && guard.alert_counts == alert_counts {
             return;
         }
         guard.alerts = alerts.clone();
-        let _ = self.tx.send(RelayEvent::AlertsChanged { alerts });
+        guard.alert_counts = alert_counts.clone();
+        let _ = self.tx.send(RelayEvent::AlertsChanged {
+            alerts,
+            alert_counts,
+        });
     }
 }
 
@@ -229,6 +235,7 @@ fn build_snapshot(inner: &InnerState, generated_at_ms: i64) -> RelayEvent {
         connection: inner.connection.clone(),
         systems,
         alerts: inner.alerts.clone(),
+        alert_counts: inner.alert_counts.clone(),
     }
 }
 

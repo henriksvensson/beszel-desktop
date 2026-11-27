@@ -11,6 +11,9 @@ use clap::Args;
 use serde::{Deserialize, Serialize};
 use tokio::net::UnixStream;
 
+use crate::alerts::offer_init_alerts_setup;
+use crate::alerts_api::HubAccount;
+
 #[derive(Debug, Args)]
 pub struct InitArgs {
     /// Beszel hub base URL (e.g. https://beszel.example.com).
@@ -31,6 +34,9 @@ pub struct InitArgs {
     /// Store password in a 0600 file (LoadCredential=) instead of systemd-creds encryption.
     #[arg(long)]
     pub plaintext_password_file: bool,
+    /// Skip the optional prompt to enable recommended Beszel hub alerts.
+    #[arg(long)]
+    pub no_alerts: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -102,6 +108,15 @@ pub async fn run_init(args: InitArgs, socket_path: &Path) -> Result<()> {
         let unit_path = install_and_start_service(&home, &cred_mode)?;
         println!("Started systemd user service: {}", unit_path.display());
         wait_for_socket(socket_path).await;
+    }
+
+    if !args.no_verify && !args.no_alerts {
+        let account = HubAccount {
+            hub_url: creds.hub_url.clone(),
+            email: creds.email.clone(),
+            password: creds.password.clone(),
+        };
+        offer_init_alerts_setup(&account).await;
     }
 
     println!();

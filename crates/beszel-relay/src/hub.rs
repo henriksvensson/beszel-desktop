@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;
 
 use anyhow::{Result, anyhow, bail};
@@ -201,6 +201,12 @@ impl<'a> ActiveSession<'a> {
         Ok(())
     }
 
+    fn sync_alerts(&self) {
+        let active = active_alerts_for_systems(&self.known_alerts, &self.current_systems);
+        let counts = configured_alert_counts(&self.known_alerts, &self.current_systems);
+        self.hub.state.set_alerts(active, counts);
+    }
+
     fn handle_alerts_event(&mut self, data: &str) {
         let parsed: AlertsRealtimeEvent = match serde_json::from_str(data) {
             Ok(ev) => ev,
@@ -210,8 +216,7 @@ impl<'a> ActiveSession<'a> {
             }
         };
         apply_alert_mutation(&mut self.known_alerts, parsed);
-        let active = active_alerts_for_systems(&self.known_alerts, &self.current_systems);
-        self.hub.state.set_alerts(active);
+        self.sync_alerts();
     }
 
     async fn handle_systems_event(&mut self, data: &str) -> std::result::Result<(), SessionError> {
@@ -241,8 +246,7 @@ impl<'a> ActiveSession<'a> {
         self.current_systems = next_systems.clone();
         self.subs = next_subs;
         self.hub.state.set_systems(next_systems);
-        let active = active_alerts_for_systems(&self.known_alerts, &self.current_systems);
-        self.hub.state.set_alerts(active);
+        self.sync_alerts();
 
         if topics_changed && self.streaming_metrics {
             info!(
@@ -274,8 +278,10 @@ impl HubClient<'_> {
         let names: Vec<&str> = systems.iter().map(|s| s.name.as_str()).collect();
         info!(count = systems.len(), systems = ?names, "Discovered Beszel systems");
         self.state.set_systems(systems.clone());
-        self.state
-            .set_alerts(active_alerts_for_systems(&alerts, &systems));
+        self.state.set_alerts(
+            active_alerts_for_systems(&alerts, &systems),
+            configured_alert_counts(&alerts, &systems),
+        );
 
         let response = self.open_sse_stream().await?;
         let mut sse_stream = SseStream {
@@ -718,6 +724,19 @@ fn active_alerts_for_systems(
             .then_with(|| a.id.cmp(&b.id))
     });
     active
+}
+
+fn configured_alert_counts(
+    known_alerts: &HashMap<String, UpstreamAlertRecord>,
+    systems: &[SystemSummary],
+) -> BTreeMap<String, usize> {
+    let mut counts = BTreeMap::new();
+    for alert in known_alerts.values() {
+        if systems.iter().any(|sys| sys.id == alert.system) {
+            *counts.entry(alert.system.clone()).or_insert(0) += 1;
+        }
+    }
+    counts
 }
 
 fn decode_and_record_sample(system_id: &str, data: &str, state: &RelayState) {

@@ -102,6 +102,25 @@ Valid `connection.state` values: `connecting`, `connected`, `paused`, `reconnect
 }
 ```
 
+### `alerts_changed`
+```json
+{
+  "type": "alerts_changed",
+  "alerts": [
+    {
+      "id": "alert_01",
+      "system_id": "sys_example_01",
+      "name": "Disk",
+      "value": 85.0,
+      "min": 1
+    }
+  ],
+  "alert_counts": {
+    "sys_example_01": 6
+  }
+}
+```
+
 ## Live vs. Historical Model
 
 This schema intentionally represents only the ~1 Hz live stream (`LiveSample` / `SystemLiveState`). Any future historical REST backfill from Beszel's stored stats collections will be modeled separately so different sampling cadences do not collide.

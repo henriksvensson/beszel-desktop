@@ -3,6 +3,8 @@
 //! This schema models the live (~1 Hz) metric stream only; any future historical
 //! REST backfill will use separate types so cadences stay distinct.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 /// Hub connection lifecycle reported to local clients.
@@ -208,6 +210,9 @@ pub enum RelayEvent {
         systems: Vec<SystemLiveState>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         alerts: Vec<ActiveAlert>,
+        /// Total number of configured Beszel alert rules per system ID.
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        alert_counts: BTreeMap<String, usize>,
     },
     /// Incremental ~1 Hz live sample for a subscribed system.
     Sample {
@@ -219,7 +224,12 @@ pub enum RelayEvent {
     /// Updated metadata for subscribed systems.
     SystemsChanged { systems: Vec<SystemSummary> },
     /// Full current list of active (triggered) alerts across subscribed systems.
-    AlertsChanged { alerts: Vec<ActiveAlert> },
+    AlertsChanged {
+        alerts: Vec<ActiveAlert>,
+        /// Total number of configured Beszel alert rules per system ID.
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        alert_counts: BTreeMap<String, usize>,
+    },
 }
 
 /// Encode a `RelayEvent` as a single NDJSON line (terminated by `\n`).
@@ -285,6 +295,7 @@ mod tests {
                 value: Some(85.0),
                 min: Some(5),
             }],
+            alert_counts: BTreeMap::from([("sys_example_01".into(), 6)]),
         };
 
         let encoded = encode_ndjson(&event).expect("encode should succeed");

@@ -1,7 +1,11 @@
+mod alerts;
+mod alerts_api;
+mod alerts_catalog;
 mod format;
 mod init;
 mod update;
 
+use std::collections::BTreeMap;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -36,6 +40,8 @@ struct Args {
 enum Command {
     /// Interactive setup wizard: configure hub credentials and start beszel-relay.
     Init(init::InitArgs),
+    /// Manage Beszel hub alert rules (list, preset setup, set, remove).
+    Alerts(alerts::AlertsArgs),
     /// Check for or install the latest verified GitHub Release binaries.
     Update(update::UpdateArgs),
     /// Connect, print the current snapshot and history count, then exit.
@@ -73,6 +79,7 @@ async fn main() -> Result<()> {
 
     match args.command {
         Command::Init(opts) => init::run_init(opts, &socket_path).await,
+        Command::Alerts(opts) => alerts::run_alerts(opts).await,
         Command::Update(opts) => update::run_update(opts).await,
         Command::Status => run_status(&socket_path).await,
         Command::Watch { raw, reconnect } => run_watch(&socket_path, raw, reconnect).await,
@@ -179,6 +186,7 @@ struct SnapshotMeta {
     hub_url: Option<String>,
     connection: ConnectionStatus,
     alerts: Vec<ActiveAlert>,
+    alert_counts: BTreeMap<String, usize>,
 }
 
 fn emit_raw_line(line: &str) -> Result<bool> {
@@ -192,6 +200,7 @@ fn emit_raw_line(line: &str) -> Result<bool> {
         connection,
         systems,
         alerts,
+        alert_counts,
     }) = decode_ndjson(line)
     else {
         return write_stdout_line(line);
@@ -203,6 +212,7 @@ fn emit_raw_line(line: &str) -> Result<bool> {
         hub_url,
         connection,
         alerts,
+        alert_counts,
     };
     emit_split_snapshot(meta, systems)
 }
@@ -225,6 +235,7 @@ fn emit_split_snapshot(meta: SnapshotMeta, systems: Vec<SystemLiveState>) -> Res
         connection: meta.connection,
         systems: header_systems,
         alerts: meta.alerts,
+        alert_counts: meta.alert_counts,
     };
     if !write_stdout_raw(&encode_ndjson(&header)?)? {
         return Ok(false);
@@ -326,7 +337,7 @@ fn print_watch_event(event: RelayEvent, system_names: &mut Vec<(String, String)>
         RelayEvent::SystemsChanged { systems } => {
             *system_names = systems.into_iter().map(|s| (s.id, s.name)).collect();
         }
-        RelayEvent::AlertsChanged { alerts } => {
+        RelayEvent::AlertsChanged { alerts, .. } => {
             println!("alerts={}", alerts.len());
         }
     }

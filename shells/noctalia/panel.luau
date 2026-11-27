@@ -24,6 +24,10 @@ local isOpen = false
 local copiedUntilMs = 0
 local pendingCopyCommand = nil
 local pendingBeszelUrl = nil
+local pendingCtlPath = nil
+local pendingAlertSystemId = nil
+local pendingAlertSystemName = nil
+local alertSetupBusy = false
 
 local hoveredCpuIndex = nil
 local hoveredMemIndex = nil
@@ -1173,7 +1177,41 @@ render = function()
     pendingBeszelUrl = string.gsub(data.hubUrl, "/+$", "") .. "/system/" .. sys.id
   end
 
+  pendingCtlPath = nil
+  pendingAlertSystemId = nil
+  pendingAlertSystemName = nil
+  if type(data) == "table" and type(data.ctlPath) == "string" and data.ctlPath ~= ""
+      and sys ~= nil and type(sys.id) == "string" and sys.id ~= "" and state == "connected" then
+    pendingCtlPath = data.ctlPath
+    pendingAlertSystemId = sys.id
+    pendingAlertSystemName = title
+  end
+
   local headerActions = {}
+  if pendingAlertSystemId ~= nil then
+    local configuredCount = (type(data) == "table" and type(data.alertCounts) == "table")
+      and (tonumber(data.alertCounts[sys.id]) or 0)
+      or 0
+    local bellGlyph = alertSetupBusy and "bell-ringing"
+      or (configuredCount > 0 and "bell-check" or "bell-plus")
+    local bellTooltip = alertSetupBusy and noctalia.tr("panel.alerts_setup_busy")
+      or (
+        configuredCount > 0
+          and noctalia.tr("panel.alerts_configured_tooltip", {
+            host = title,
+            count = tostring(configuredCount),
+          })
+        or noctalia.tr("panel.alerts_setup_tooltip", { host = title })
+      )
+    table.insert(headerActions, ui.button({
+      glyph = bellGlyph,
+      glyphSize = 14,
+      variant = "ghost",
+      controlSize = "sm",
+      tooltip = bellTooltip,
+      onClick = "onSetupAlerts",
+    }))
+  end
   if pendingBeszelUrl ~= nil then
     table.insert(headerActions, ui.button({
       glyph = "external-link",
@@ -1365,6 +1403,72 @@ function onOpenInBeszel()
   end
   noctalia.runAsync({ "xdg-open", pendingBeszelUrl })
   panel.close()
+end
+
+function onSetupAlerts()
+  if alertSetupBusy or type(pendingCtlPath) ~= "string" or type(pendingAlertSystemId) ~= "string" then
+    return
+  end
+  local ctlBin = pendingCtlPath
+  local targetId = pendingAlertSystemId
+  local targetName = pendingAlertSystemName or targetId
+  alertSetupBusy = true
+  render()
+
+  local started = noctalia.runAsync(
+    { ctlBin, "alerts", "setup", "--defaults", "--system", targetId, "--json" },
+    function(result)
+      alertSetupBusy = false
+      if type(result) == "table" and result.exitCode == 0 then
+        local parsed = noctalia.json.decode(noctalia.string.trim(result.stdout or ""))
+        local created = type(parsed) == "table" and (tonumber(parsed.created) or 0) or 0
+        local skipped = type(parsed) == "table" and (tonumber(parsed.skipped) or 0) or 0
+        if created > 0 and skipped > 0 then
+          noctalia.notify(
+            noctalia.tr("alerts.setup_title", { host = targetName }),
+            noctalia.tr("alerts.setup_enabled_preserved", {
+              created = tostring(created),
+              skipped = tostring(skipped),
+            })
+          )
+        elseif created > 0 then
+          noctalia.notify(
+            noctalia.tr("alerts.setup_title", { host = targetName }),
+            noctalia.tr("alerts.setup_enabled", { created = tostring(created) })
+          )
+        else
+          noctalia.notify(
+            noctalia.tr("alerts.setup_title", { host = targetName }),
+            noctalia.tr("alerts.setup_already_configured")
+          )
+        end
+      else
+        local errText = type(result) == "table" and noctalia.string.trim(result.stderr or "") or ""
+        if errText == "" then
+          errText = noctalia.tr("alerts.setup_failed_generic")
+        end
+        noctalia.notifyError(
+          noctalia.tr("alerts.setup_failed_title", { host = targetName }),
+          errText
+        )
+      end
+      if isOpen then
+        render()
+      end
+    end,
+    15000
+  )
+
+  if not started then
+    alertSetupBusy = false
+    noctalia.notifyError(
+      noctalia.tr("alerts.setup_failed_title", { host = targetName }),
+      noctalia.tr("alerts.setup_failed_generic")
+    )
+    if isOpen then
+      render()
+    end
+  end
 end
 
 function onCopySetupCommand()

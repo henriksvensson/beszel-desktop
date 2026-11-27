@@ -62,11 +62,13 @@ Prefer to install via a package manager or from source?
 
 `beszel-ctl init` prompts for your Beszel hub URL, email, and password (hidden), verifies login and lists discovered hosts, stores credentials securely (`systemd-creds` on systemd >= 256 or a `0600` file via `LoadCredential=` on older systemd), and enables `beszel-relay.service`.
 
-Verify the live stream locally at any time:
+Verify the live stream locally or manage Beszel hub alert rules at any time:
 
 ```sh
 beszel-ctl status
 beszel-ctl watch
+beszel-ctl alerts list
+beszel-ctl alerts setup --defaults   # enables recommended alerts without overwriting existing rules
 ```
 
 Update `~/.local/bin` binaries later (downloads & SHA-256-verifies the latest GitHub Release and restarts `beszel-relay.service`):

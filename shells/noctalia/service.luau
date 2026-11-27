@@ -15,10 +15,12 @@ local connection = {
 local systems = {}
 local historyBySystem = {}
 local alertsBySystem = {}
+local alertCounts = {}
 local seenAlertIds = {}
 local alertsInitialized = false
 local historyCapacity = 60
 local hubUrl = nil
+local ctlPath = nil
 local ctlMissing = false
 
 local function shellQuote(str)
@@ -68,7 +70,9 @@ local function publish()
     systems = systems,
     historyBySystem = historyBySystem,
     alertsBySystem = alertsBySystem,
+    alertCounts = alertCounts,
     historyCapacity = historyCapacity,
+    ctlPath = ctlPath,
     ctlMissing = ctlMissing,
     updatedAtMs = noctalia.nowMs(),
   })
@@ -143,6 +147,7 @@ local function applySnapshot(msg)
   systems = nextSystems
   historyBySystem = nextHistory
   historyCapacity = cap
+  alertCounts = type(msg.alert_counts) == "table" and msg.alert_counts or {}
   applyAlerts(msg.alerts, false)
   publish()
 end
@@ -194,6 +199,7 @@ local function onRelayLine(rawLine)
     systems = msg.systems
     publish()
   elseif msg.type == "alerts_changed" and type(msg.alerts) == "table" then
+    alertCounts = type(msg.alert_counts) == "table" and msg.alert_counts or {}
     applyAlerts(msg.alerts, true)
     publish()
   end
@@ -202,6 +208,7 @@ end
 local function startStream()
   local binPath, found = resolveCtlBinary()
   if not found then
+    ctlPath = nil
     ctlMissing = true
     connection = {
       state = "disconnected",
@@ -214,6 +221,7 @@ local function startStream()
     return
   end
 
+  ctlPath = binPath
   ctlMissing = false
   local cmd = buildStreamCommand(binPath)
   noctalia.setUpdateInterval(60000)
