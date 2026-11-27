@@ -1,5 +1,5 @@
 Name:           beszel-desktop
-Version:        0.4.0
+Version:        0.5.0
 Release:        1%{?dist}
 Summary:        Live Beszel metrics daemon, CLI, and Wayland desktop shell widgets
 
@@ -48,6 +48,9 @@ cp -r shells/dms shells/noctalia shells/waybar %{buildroot}%{_datadir}/%{name}/s
 %{_datadir}/%{name}/shells/
 
 %changelog
+* Fri Nov 27 2026 Henrik Svensson <1612710+henriksvensson@users.noreply.github.com> - 0.5.0-1
+- Mirror Beszel hub alerts live (bar badge, panel banner, desktop notifications), add `beszel-ctl alerts` CLI with non-destructive `--defaults` setup and 1-click Noctalia panel trigger, and stabilize tooltip width
+
 * Thu Nov 26 2026 Henrik Svensson <1612710+henriksvensson@users.noreply.github.com> - 0.4.0-1
 - Expanded live metrics (GPU, network RX/TX, root & extra disks, storage pools, containers, failed systemd services, pending updates, battery state, OS/CPU details) and configurable 2-column Noctalia panel & bar settings
 
