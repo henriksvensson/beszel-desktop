@@ -13,21 +13,53 @@ local SELECTED_HOST_KEY = "beszel.selected_host"
 
 local data = noctalia.state.get(STATE_KEY)
 local sessionHostId = nil
-local instanceSeq = (tonumber(noctalia.state.get("beszel.bar_seq")) or 0) + 1
-noctalia.state.set("beszel.bar_seq", instanceSeq)
 local cachedOutput = ""
+local watchedOwnerKey = nil
 local lastVisible = true
+local render
+
+local function makeInstanceId()
+  local filter = string.lower(noctalia.string.trim(noctalia.getConfig("system") or ""))
+  local prefix = filter == "" and "0:" or ("1:" .. filter .. ":")
+  return prefix .. tostring({}) .. ":" .. string.format("%06d", math.random(0, 999999))
+end
+
+local instanceId = makeInstanceId()
 
 noctalia.setUpdateInterval(1000)
 
+local function ownerKeyForOutput(out)
+  return "beszel.offline_owner." .. (out ~= "" and out or "default")
+end
+
+local function releaseOwnerKey(key)
+  local current = noctalia.state.get(key)
+  if type(current) == "table" and current.id == instanceId then
+    noctalia.state.set(key, { id = "", ts = 0 })
+  end
+end
+
 local function offlineOwnerKey()
-  if cachedOutput == "" and type(barWidget.outputName) == "function" then
+  if type(barWidget.outputName) == "function" then
     local out = barWidget.outputName()
-    if type(out) == "string" and out ~= "" then
+    if type(out) == "string" and out ~= "" and out ~= cachedOutput then
+      releaseOwnerKey(ownerKeyForOutput(cachedOutput))
       cachedOutput = out
     end
   end
-  return "beszel.offline_owner." .. (cachedOutput ~= "" and cachedOutput or "default")
+  local key = ownerKeyForOutput(cachedOutput)
+  if watchedOwnerKey ~= key then
+    watchedOwnerKey = key
+    noctalia.state.watch(key, function(nextOwner)
+      if type(nextOwner) == "table" and nextOwner.id == instanceId then
+        return
+      end
+      if type(render) == "function" then
+        render()
+      end
+    end)
+  end
+  return key
 end
 
 local function setWidgetVisible(visible)
@@ -41,23 +73,26 @@ local function claimOfflineOwner()
   local key = offlineOwnerKey()
   local now = noctalia.nowMs()
   local current = noctalia.state.get(key)
-  local currentSeq = type(current) == "table" and tonumber(current.seq) or nil
+  local currentId = type(current) == "table" and type(current.id) == "string" and current.id or ""
   local currentTs = type(current) == "table" and tonumber(current.ts) or 0
-  local expired = (now - currentTs) > 5000
+  local ageMs = now - currentTs
 
-  if currentSeq == nil or currentSeq <= 0 or currentSeq == instanceSeq or instanceSeq < currentSeq or expired then
-    noctalia.state.set(key, { seq = instanceSeq, ts = now })
+  if currentId == instanceId then
+    if ageMs >= 2000 then
+      noctalia.state.set(key, { id = instanceId, ts = now })
+    end
+    return true
+  end
+
+  if currentId == "" or instanceId < currentId or ageMs > 5000 then
+    noctalia.state.set(key, { id = instanceId, ts = now })
     return true
   end
   return false
 end
 
 local function releaseOfflineOwner()
-  local key = offlineOwnerKey()
-  local current = noctalia.state.get(key)
-  if type(current) == "table" and tonumber(current.seq) == instanceSeq then
-    noctalia.state.set(key, { seq = 0, ts = 0 })
-  end
+  releaseOwnerKey(offlineOwnerKey())
 end
 
 local function resolveDisplayedSystem(systems, filter)
@@ -374,7 +409,7 @@ local function renderVertical(latest, state, statusColor, warnPct, dangerPct, op
   barWidget.render(ui.column({ gap = 2, align = "center" }, rows))
 end
 
-local function render()
+render = function()
   local filter = noctalia.getConfig("system") or ""
   local opts = {
     showHost = noctalia.getConfig("show_host_name") ~= false,
