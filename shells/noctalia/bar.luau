@@ -36,14 +36,18 @@ end
 
 local function buildTooltip(sys, latest, state, filter, alerts)
   local rows = {}
+  local offline = fmt.isHardOffline(state)
+  local trimmedFilter = noctalia.string.trim(filter or "")
   if sys ~= nil then
     table.insert(rows, { key = noctalia.tr("tooltip.host"), value = sys.name })
     local osLabel = fmt.cleanOsName(sys.os_name)
     if osLabel ~= nil then
       table.insert(rows, { key = noctalia.tr("tooltip.os"), value = osLabel })
     end
+  elseif trimmedFilter ~= "" then
+    table.insert(rows, { key = noctalia.tr("tooltip.host"), value = trimmedFilter })
   end
-  if type(alerts) == "table" and #alerts > 0 then
+  if not offline and type(alerts) == "table" and #alerts > 0 then
     local labels = {}
     for _, alert in ipairs(alerts) do
       table.insert(labels, fmt.formatAlert(alert))
@@ -53,7 +57,7 @@ local function buildTooltip(sys, latest, state, filter, alerts)
       value = table.concat(labels, ", "),
     })
   end
-  if latest ~= nil then
+  if not offline and latest ~= nil then
     table.insert(rows, {
       key = noctalia.tr("tooltip.cpu"),
       value = string.format("%.1f%%", tonumber(latest.cpu_pct) or 0),
@@ -159,7 +163,12 @@ local function buildTooltip(sys, latest, state, filter, alerts)
       table.insert(rows, { key = noctalia.tr("tooltip.updates"), value = updText })
     end
   end
-  table.insert(rows, { key = noctalia.tr("tooltip.status"), value = fmt.stateLabel(state, filter) })
+  local statusLabel = fmt.stateLabel(state, filter)
+  if fmt.isStaleState(state) and latest ~= nil and latest.timestamp_ms ~= nil then
+    local ageMs = noctalia.nowMs() - (tonumber(latest.timestamp_ms) or 0)
+    statusLabel = string.format("%s (%s)", statusLabel, fmt.formatAge(ageMs))
+  end
+  table.insert(rows, { key = noctalia.tr("tooltip.status"), value = statusLabel })
   return rows
 end
 
@@ -345,17 +354,25 @@ local function render()
   barWidget.setTooltip(buildTooltip(sys, latest, state, effectiveFilter, alerts))
 
   local showMetrics = latest ~= nil
-    and state ~= "disconnected"
-    and state ~= "auth_error"
+    and not fmt.isHardOffline(state)
     and state ~= "not_found"
 
   if not showMetrics then
-    local badge = alertBadge(alerts)
+    local offlineLabel = fmt.stateLabel(state, effectiveFilter)
+    local trimmedFilter = noctalia.string.trim(effectiveFilter or "")
+    if state == "disconnected" and opts.showHost and trimmedFilter ~= "" then
+      local hostLabel = (sys ~= nil and type(sys.name) == "string" and sys.name ~= "")
+        and sys.name
+        or trimmedFilter
+      offlineLabel = noctalia.tr("state.host_offline", { host = hostLabel })
+    end
+
+    local badge = not fmt.isHardOffline(state) and alertBadge(alerts) or nil
     if badge ~= nil then
       barWidget.render(ui.row({ gap = 6, align = "center" }, {
         badge,
         ui.label({
-          text = fmt.stateLabel(state, effectiveFilter),
+          text = offlineLabel,
           color = statusColor,
           maxLines = 1,
         }),
@@ -363,7 +380,7 @@ local function render()
       return
     end
     barWidget.render(ui.label({
-      text = fmt.stateLabel(state, effectiveFilter),
+      text = offlineLabel,
       color = statusColor,
       maxLines = 1,
     }))

@@ -141,6 +141,29 @@ function M.formatUptime(secs)
   return string.format("%dm", math.max(1, mins))
 end
 
+function M.formatAge(ageMs)
+  local secs = math.max(0, math.floor((tonumber(ageMs) or 0) / 1000))
+  if secs < 60 then
+    return string.format("%ds", secs)
+  end
+  local mins = math.floor(secs / 60)
+  local remSecs = secs % 60
+  if mins < 60 then
+    return string.format("%dm %ds", mins, remSecs)
+  end
+  local hours = math.floor(mins / 60)
+  local remMins = mins % 60
+  return string.format("%dh %dm", hours, remMins)
+end
+
+function M.isHardOffline(state)
+  return state == "disconnected" or state == "auth_error"
+end
+
+function M.isStaleState(state)
+  return state == "stale" or state == "reconnecting" or state == "connecting" or state == "paused"
+end
+
 function M.cleanOsName(name)
   if type(name) ~= "string" then
     return nil

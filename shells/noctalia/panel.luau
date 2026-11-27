@@ -17,6 +17,7 @@ local NET_SCALE_FLOOR_BPS = 10 * 1024
 local MAX_CONTAINERS_SHOWN = 5
 local INSTALL_COMMAND = "cargo install beszel-relay beszel-ctl"
 local INIT_COMMAND = "beszel-ctl init"
+local START_RELAY_COMMAND = "systemctl --user start beszel-relay.service"
 
 local data = noctalia.state.get(STATE_KEY)
 local selectedHostId = noctalia.state.get(SELECTED_HOST_KEY)
@@ -440,10 +441,11 @@ local function buildVitalsStrip(sys, latest)
   }, rowChildren)
 end
 
-local function buildCpuSection(samples, latest, warnPct, dangerPct)
+local function buildCpuSection(samples, latest, warnPct, dangerPct, isStale)
   local cpuSample = (hoveredCpuIndex ~= nil and samples[hoveredCpuIndex]) or latest
   local cpuPct = tonumber(cpuSample.cpu_pct) or 0
-  local cpuColor = fmt.severityColor(cpuPct, "primary", warnPct, dangerPct)
+  local cpuColor = isStale and "on_surface_variant"
+    or fmt.severityColor(cpuPct, "primary", warnPct, dangerPct)
 
   return ui.column({ gap = 6, flexGrow = 1 }, {
     cardHeader(
@@ -475,7 +477,7 @@ local function buildCpuSection(samples, latest, warnPct, dangerPct)
   })
 end
 
-local function buildCoreHeatmap(warnPct, dangerPct)
+local function buildCoreHeatmap(warnPct, dangerPct, isStale)
   if noctalia.getConfig("show_cores") == false then
     return nil
   end
@@ -526,7 +528,8 @@ local function buildCoreHeatmap(warnPct, dangerPct)
           table.insert(barChildren, ui.box({
             height = fillHeight,
             radius = 2,
-            fill = coreColor(shownVal, warnPct, dangerPct),
+            fill = isStale and "on_surface_variant/0.45"
+              or coreColor(shownVal, warnPct, dangerPct),
           }))
         end
 
@@ -574,10 +577,11 @@ local function buildCoreHeatmap(warnPct, dangerPct)
   })
 end
 
-local function buildMemorySection(samples, latest, warnPct, dangerPct)
+local function buildMemorySection(samples, latest, warnPct, dangerPct, isStale)
   local memSample = (hoveredMemIndex ~= nil and samples[hoveredMemIndex]) or latest
   local memPct = tonumber(memSample.mem_pct) or 0
-  local memColor = fmt.severityColor(memPct, "secondary", warnPct, dangerPct)
+  local memColor = isStale and "on_surface_variant"
+    or fmt.severityColor(memPct, "secondary", warnPct, dangerPct)
 
   local memReadoutChildren = {}
   if memSample.mem_used_bytes ~= nil and memSample.mem_total_bytes ~= nil then
@@ -654,7 +658,7 @@ local function buildMemorySection(samples, latest, warnPct, dangerPct)
   })
 end
 
-local function buildGpuSection(samples, latest, warnPct, dangerPct)
+local function buildGpuSection(samples, latest, warnPct, dangerPct, isStale)
   if noctalia.getConfig("show_gpu") == false then
     return nil
   end
@@ -666,7 +670,8 @@ local function buildGpuSection(samples, latest, warnPct, dangerPct)
   local sample = (hoveredGpuIndex ~= nil and samples[hoveredGpuIndex]) or latest
   local gpu = fmt.primaryGpu(sample) or latestGpu
   local gpuPct = tonumber(gpu.usage_pct) or 0
-  local gpuColor = fmt.severityColor(gpuPct, "primary", warnPct, dangerPct)
+  local gpuColor = isStale and "on_surface_variant"
+    or fmt.severityColor(gpuPct, "primary", warnPct, dangerPct)
 
   local metaParts = {}
   if gpu.mem_used_mb ~= nil and gpu.mem_total_mb ~= nil then
@@ -721,7 +726,7 @@ local function buildGpuSection(samples, latest, warnPct, dangerPct)
   })
 end
 
-local function buildNetworkSection(samples, latest)
+local function buildNetworkSection(samples, latest, isStale)
   if noctalia.getConfig("show_network") == false then
     return nil
   end
@@ -735,8 +740,8 @@ local function buildNetworkSection(samples, latest)
   local sentBps = tonumber(sample.net_sent_bps) or 0
 
   -- Distinct high-contrast palette roles: primary (download) vs tertiary (upload).
-  local dlColor = "primary"
-  local ulColor = "tertiary"
+  local dlColor = isStale and "on_surface_variant" or "primary"
+  local ulColor = isStale and "on_surface_variant/0.65" or "tertiary"
 
   return ui.column({ gap = 6, flexGrow = 1 }, {
     cardHeader(
@@ -816,7 +821,7 @@ local function buildNetworkSection(samples, latest)
   })
 end
 
-local function buildDiskSection(latest, warnPct, dangerPct)
+local function buildDiskSection(latest, warnPct, dangerPct, isStale)
   if noctalia.getConfig("show_disk") == false then
     return nil
   end
@@ -833,7 +838,8 @@ local function buildDiskSection(latest, warnPct, dangerPct)
 
   if hasDiskPct then
     local pct = tonumber(latest.disk_pct) or 0
-    local diskColor = fmt.severityColor(pct, "primary", warnPct, dangerPct)
+    local diskColor = isStale and "on_surface_variant"
+      or fmt.severityColor(pct, "primary", warnPct, dangerPct)
     if latest.disk_used_gb ~= nil and latest.disk_total_gb ~= nil then
       table.insert(headerRight, ui.label({
         text = string.format(
@@ -886,7 +892,8 @@ local function buildDiskSection(latest, warnPct, dangerPct)
     end
     for i, disk in ipairs(extraDisks) do
       local pct = tonumber(disk.pct) or 0
-      local extraColor = fmt.severityColor(pct, "primary", warnPct, dangerPct)
+      local extraColor = isStale and "on_surface_variant"
+        or fmt.severityColor(pct, "primary", warnPct, dangerPct)
       table.insert(cardChildren, ui.column({
         key = "efs-" .. tostring(i) .. "-" .. tostring(disk.name or ""),
         gap = 3,
@@ -1062,18 +1069,72 @@ local function buildAlertsBanner(alerts)
   })
 end
 
-local function buildOnboardingCard(state)
+local function buildStaleBanner(state, latest)
+  if not fmt.isStaleState(state) or latest == nil or latest.timestamp_ms == nil then
+    return nil
+  end
+  local ageMs = noctalia.nowMs() - (tonumber(latest.timestamp_ms) or 0)
+  local ageText = fmt.formatAge(ageMs)
+  local key = "panel.stale_banner"
+  if state == "reconnecting" then
+    key = "panel.stale_reconnecting_banner"
+  elseif state == "connecting" then
+    key = "panel.connecting_banner"
+  elseif state == "paused" then
+    key = "panel.paused_banner"
+  end
+
+  return ui.row({
+    gap = 8,
+    paddingH = 10,
+    paddingV = 8,
+    radius = 8,
+    fill = "tertiary_container",
+    align = "center",
+  }, {
+    ui.glyph({ name = "alert-circle", size = 15, color = "on_tertiary_container" }),
+    ui.label({
+      text = noctalia.tr(key, { age = ageText }),
+      fontSize = 12,
+      fontWeight = "medium",
+      color = "on_tertiary_container",
+      flexGrow = 1,
+      maxLines = 2,
+    }),
+  })
+end
+
+local function buildOnboardingCard(state, hadData)
   local isMissing = type(data) == "table" and data.ctlMissing == true
   local isCopied = noctalia.nowMs() < copiedUntilMs
 
-  if isMissing or state == "disconnected" or state == "error" then
-    local headingKey = isMissing and "panel.setup_install_title"
-      or (state == "error" and "panel.setup_auth_title" or "panel.setup_init_title")
-    local descKey = isMissing and "panel.setup_install_desc"
-      or (state == "error" and "panel.setup_auth_desc" or "panel.setup_init_desc")
-    local cmd = isMissing and INSTALL_COMMAND or INIT_COMMAND
-    local btnKey = isCopied and "panel.setup_copied"
-      or (isMissing and "panel.setup_copy_install" or "panel.setup_copy_init")
+  if isMissing or fmt.isHardOffline(state) then
+    local headingKey
+    local descKey
+    local cmd
+    local btnKey
+
+    if isMissing then
+      headingKey = "panel.setup_install_title"
+      descKey = "panel.setup_install_desc"
+      cmd = INSTALL_COMMAND
+      btnKey = isCopied and "panel.setup_copied" or "panel.setup_copy_install"
+    elseif state == "auth_error" then
+      headingKey = "panel.setup_auth_title"
+      descKey = "panel.setup_auth_desc"
+      cmd = INIT_COMMAND
+      btnKey = isCopied and "panel.setup_copied" or "panel.setup_copy_init"
+    elseif hadData then
+      headingKey = "panel.offline_title"
+      descKey = "panel.offline_desc"
+      cmd = START_RELAY_COMMAND
+      btnKey = isCopied and "panel.setup_copied" or "panel.offline_copy_start"
+    else
+      headingKey = "panel.setup_init_title"
+      descKey = "panel.setup_init_desc"
+      cmd = INIT_COMMAND
+      btnKey = isCopied and "panel.setup_copied" or "panel.setup_copy_init"
+    end
 
     pendingCopyCommand = cmd
 
@@ -1170,8 +1231,13 @@ render = function()
     statusText = fmt.stateLabel(state, "")
   end
 
+  local hardOffline = fmt.isHardOffline(state)
+    or (type(data) == "table" and data.ctlMissing == true)
+  local isStale = fmt.isStaleState(state)
+  local hadData = latest ~= nil or (type(data) == "table" and type(data.systems) == "table" and #data.systems > 0)
+
   pendingBeszelUrl = nil
-  if type(data) == "table" and type(data.hubUrl) == "string"
+  if not hardOffline and type(data) == "table" and type(data.hubUrl) == "string"
       and string.match(data.hubUrl, "^https?://") ~= nil
       and sys ~= nil and type(sys.id) == "string" and sys.id ~= "" then
     pendingBeszelUrl = string.gsub(data.hubUrl, "/+$", "") .. "/system/" .. sys.id
@@ -1250,20 +1316,25 @@ render = function()
     ui.row({ gap = 4, align = "center" }, headerActions),
   })
 
-  local alerts = sys ~= nil and fmt.alertsForSystem(data, sys.id) or {}
+  local alerts = (not hardOffline and sys ~= nil) and fmt.alertsForSystem(data, sys.id) or {}
   local alertsBanner = buildAlertsBanner(alerts)
 
-  if latest == nil then
+  if hardOffline or latest == nil then
     local emptyBody = { header }
     if alertsBanner ~= nil then
       table.insert(emptyBody, alertsBanner)
     end
-    table.insert(emptyBody, buildOnboardingCard(state))
+    table.insert(emptyBody, buildOnboardingCard(state, hadData))
     panel.render(ui.column({ flexGrow = 1, gap = 12 }, emptyBody))
     return
   end
 
   local scrollChildren = {}
+
+  local staleBanner = buildStaleBanner(state, latest)
+  if staleBanner ~= nil then
+    table.insert(scrollChildren, staleBanner)
+  end
 
   if alertsBanner ~= nil then
     table.insert(scrollChildren, alertsBanner)
@@ -1276,8 +1347,8 @@ render = function()
 
   -- Ordered 2-column grid rows so left and right cards share exact row baselines.
   local cards = {
-    buildCpuSection(samples, latest, warnPct, dangerPct),
-    buildMemorySection(samples, latest, warnPct, dangerPct),
+    buildCpuSection(samples, latest, warnPct, dangerPct, isStale),
+    buildMemorySection(samples, latest, warnPct, dangerPct, isStale),
   }
   local function addCard(node)
     if node ~= nil then
@@ -1285,10 +1356,10 @@ render = function()
     end
   end
 
-  addCard(buildCoreHeatmap(warnPct, dangerPct))
-  addCard(buildNetworkSection(samples, latest))
-  addCard(buildGpuSection(samples, latest, warnPct, dangerPct))
-  addCard(buildDiskSection(latest, warnPct, dangerPct))
+  addCard(buildCoreHeatmap(warnPct, dangerPct, isStale))
+  addCard(buildNetworkSection(samples, latest, isStale))
+  addCard(buildGpuSection(samples, latest, warnPct, dangerPct, isStale))
+  addCard(buildDiskSection(latest, warnPct, dangerPct, isStale))
   addCard(buildContainersSection(latest))
 
   local i = 1

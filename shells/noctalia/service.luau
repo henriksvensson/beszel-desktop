@@ -194,6 +194,11 @@ local function onRelayLine(rawLine)
     applySample(msg.system_id, msg.sample)
   elseif msg.type == "connection" and type(msg.connection) == "table" then
     connection = msg.connection
+    if fmt.isHardOffline(connection.state) then
+      alertsBySystem = {}
+      alertCounts = {}
+      alertsInitialized = false
+    end
     publish()
   elseif msg.type == "systems_changed" and type(msg.systems) == "table" then
     systems = msg.systems
