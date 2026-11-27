@@ -123,12 +123,12 @@ local function buildTooltip(sys, latest, state, filter, alerts)
 
     if fmt.hasNetwork(latest) then
       table.insert(rows, {
-        key = noctalia.tr("tooltip.network"),
-        value = string.format(
-          "↓ %s  ↑ %s",
-          fmt.formatRate(latest.net_recv_bps or 0),
-          fmt.formatRate(latest.net_sent_bps or 0)
-        ),
+        key = noctalia.tr("tooltip.download"),
+        value = "↓ " .. fmt.formatRate(latest.net_recv_bps or 0),
+      })
+      table.insert(rows, {
+        key = noctalia.tr("tooltip.upload"),
+        value = "↑ " .. fmt.formatRate(latest.net_sent_bps or 0),
       })
     end
 

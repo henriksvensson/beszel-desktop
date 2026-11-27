@@ -172,16 +172,17 @@
     "alerts": "Alerts",
     "cpu": "CPU",
     "disk": "Disk",
+    "download": "Download",
     "gpu": "GPU",
     "host": "Host",
     "memory": "Memory",
-    "network": "Network",
     "os": "OS",
     "services": "Services",
     "status": "Status",
     "swap": "Swap",
     "temp": "Temperature",
     "updates": "Updates",
+    "upload": "Upload",
     "uptime": "Uptime"
   }
 }
